@@ -2,6 +2,7 @@ export type Phase =
   | "title"
   | "route"
   | "choice"
+  | "story"
   | "player"
   | "resolving"
   | "tech"
@@ -65,6 +66,16 @@ export const RULES = {
   rocketFindCap: 0.4,
   rocketAmmoLight: 0.08,
   rocketAmmoLvl2: 0.16,
+  rifleCash: 2,
+  rifleMadness: 1,
+  scaredChance: 0.5,
+};
+
+export const SCARED_STORY = {
+  title: "Something is breathing in the smoke",
+  hook: "A light mech is folded against the wall, vents open, shaking so hard the plates chatter. It does not raise a weapon. The visor tracks Jubey and then the floor. Smoke pours from the shoulders like it has been holding its breath since the last crew died.",
+  option: "Open the vents. Let them walk behind you.",
+  take: "The rig stands. It does not speak. It takes the column to Jubey's left and keeps the gun low. You have a scared ally.",
 };
 
 export type ChoiceId =

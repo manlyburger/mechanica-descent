@@ -1,0 +1,1313 @@
+MECHANICA DESCENT
+
+Improvised Army & Machine Encounters — Implementation Brief
+
+Status: PROPOSED
+Scope: Nine selected cards, companion AI, salvage systems, assembly mechanics, encounter branches, machine malfunctions, and Improvised Army combinations.
+
+Implementation objective: Expand the player’s ability to assemble and maintain an improvised squad of scavenged machines, while making that squad vulnerable to enemy counterplay, resource shortages, corrupted programming, and unusual facility events.
+
+This brief builds on the previously proposed Half-Awake Builder Drone, Salvage Leech, Wrong Hallway, and associated card interactions. It does not assume any unverified implementation progress.
+
+⸻
+
+1. Selected content
+
+Card	Type	Primary role
+Scrap Shepherd	Common Machine Ally	Wreckage collection and Scrap
+Ceiling Walker	Uncommon Machine Ally	Elevated attacks and reconnaissance
+Panic Jack	Uncommon Machine Ally	Interception and emergency defense
+Unfinished Warframe	Rare Machine Ally	Delayed heavy combat power
+Faulty Access Badge	Utility	Facility-machine manipulation
+Sealant Coffin	Utility	Immobilization and restorative sealing
+Black-Box Recorder	Nightmare Reaction	Benefits from machine destruction
+Manual Override Hand	Nightmare Equipment	Correcting malfunctions and forced control
+The Patient Machine	Rare Encounter	Repair, salvage, and machine-memory decisions
+
+Also implement Improvised Army, a supported synergy package involving Builder Drones, Scrap Shepherds, and Unfinished Warframes.
+
+Do not create an entirely separate combat system for the new cards. Integrate with existing turn sequencing, card costs, combat, damage, machine tags, encounter resolution, and player resources.
+
+⸻
+
+2. Shared machine architecture
+
+These cards need common interaction rules so they behave like machinery occupying the same battlefield.
+
+Machine states
+
+Support the following states where applicable:
+
+* Active: Able to act under ordinary rules.
+* Inert: Present but unable to attack or move until activated.
+* Repairing: Performing a maintenance operation.
+* Carrying: Holding collected salvage.
+* Protected: Assigned a defensive ally.
+* Uncontrolled: Temporarily choosing actions without player direction.
+* Immobilized: Cannot move or act for a specified duration.
+* Shutdown: Temporarily inactive.
+* Destroyed: Removed from active combat and potentially producing recoverable wreckage.
+
+Store state changes on each machine instance, not globally on the card definition.
+
+Action timing
+
+Resolve a turn in the following order, adapting to the current engine’s equivalent event hooks:
+
+1. Player actions and paid abilities.
+2. Target validation and resource spending.
+3. Movement, attacks, and normal damage.
+4. Defensive interception and prevention effects at the appropriate pre-damage window.
+5. Destruction reactions and wreckage generation.
+6. Salvage collection opportunities.
+7. Autonomous allied-machine actions.
+8. Maintenance, assembly, and shutdown counters.
+9. Enemy actions according to existing combat timing.
+10. Duration expiration, cleanup, and encounter progression.
+
+Avoid allowing the same autonomous unit to act twice because multiple events reference it.
+
+Wreckage
+
+Create a reusable wreckage record on eligible machine destruction.
+
+Suggested properties:
+
+* Source machine instance.
+* Source faction.
+* Original position or lane.
+* Salvage eligibility.
+* Collection status.
+* Remaining recoverable value.
+* Unique wreckage ID.
+
+Every wreckage object must have a stable ID to prevent repeated collection.
+
+If the game already represents destroyed units or dropped Scrap, use those records instead of duplicating them.
+
+⸻
+
+3. Card 1 — Scrap Shepherd
+
+Type: Machine Ally
+Rarity: Common
+Cost: 2 Scrap
+HP: 4
+Attack: 0
+
+Core ability — Wreckage Collector
+
+Whenever an eligible machine is destroyed, the Scrap Shepherd attempts to retrieve its remains.
+
+For every two distinct wrecks successfully collected, generate 2 Scrap.
+
+The Shepherd stores collection progress independently from normal Scrap.
+
+Behavior
+
+When wreckage becomes available:
+
+1. Check whether the Shepherd is active.
+2. Identify eligible wreckage that has not been collected.
+3. Prioritize the nearest accessible wreck.
+4. Move toward it if movement is required.
+5. Pick up the wreckage.
+6. Increase its carried-wreck counter.
+7. If the counter reaches two, convert the pair into 2 Scrap.
+8. Reset the counter and resume searching.
+
+If the game does not use positional movement, the Shepherd may retrieve one eligible wreck per autonomous action.
+
+Carrying salvage
+
+Show the Shepherd visibly accumulating metal plates, robot limbs, broken weapons, and other mechanical debris.
+
+A Shepherd carrying one wreck has a meaningful vulnerability: it has not yet completed a profitable collection pair.
+
+Destruction — Cargo Spill
+
+When destroyed while carrying unfinished salvage:
+
+* Drop its carried wreckage in a recoverable pile.
+* Allow the player to collect it through normal salvage actions.
+* Enemy scavengers may reach the pile first.
+* Do not immediately grant the full two-wreck reward unless the requirement has been met.
+
+The contents must retain their existing collected IDs so the player cannot repeatedly salvage the same wreck.
+
+Player commands
+
+If manual machine commands are supported, add:
+
+Collect Nearest: Prioritize the nearest wreck.
+
+Collect Selected: Target a specific eligible wreck.
+
+Hold Position: Remain in place and collect only accessible salvage.
+
+Retreat: Stop collecting and move toward safety.
+
+Unload: Deliver carried salvage to a valid allied collection point.
+
+Special behaviors
+
+Under Fire: The Shepherd attempts to retain its cargo and move toward safer terrain, if a safe route exists.
+
+Nearby Builder Drone: The two machines may perform a coordinated unloading action.
+
+Enemy Salvager Present: Both factions may compete for the same wreckage.
+
+Threat Beacon Present: The Shepherd may exploit enemies attacking the Beacon to retrieve exposed wrecks.
+
+Builder Drone synergy — Assisted Unloading
+
+A Builder Drone can spend one maintenance action assisting an adjacent or accessible Scrap Shepherd.
+
+* If the Shepherd has two collected wrecks, complete unloading immediately.
+* If it has one, secure that wreck against accidental cargo loss until the Shepherd moves or is destroyed.
+* Do not generate Scrap without meeting the normal wreck threshold.
+
+Safeguards
+
+* Each wreck contributes to the Shepherd’s collection counter at most once.
+* Destruction and rebuilding of an identical unit instance must not duplicate salvage.
+* Enemy-generated temporary summons are eligible only when their normal destruction rules permit salvage.
+* Wreckage used by another exclusive collector cannot simultaneously be collected by the Shepherd.
+* Damage-based Salvage Leech extractions remain separate and do not require corpse ownership.
+
+⸻
+
+4. Card 2 — Ceiling Walker
+
+Type: Machine Ally
+Rarity: Uncommon
+Cost: 2 Scrap
+HP: 3
+Attack: 2
+
+Core ability — Elevated Traversal
+
+The Ceiling Walker climbs above normal ground-level defenses.
+
+While overhead:
+
+* Ignore ordinary ground cover when determining its attack line.
+* Avoid ground-only obstacles.
+* Remain vulnerable to ranged attacks capable of targeting elevated units.
+* Remain vulnerable to relevant explosions and environmental hazards.
+
+Do not make it universally untargetable.
+
+Behavior states
+
+Climbing: Moves into an overhead position.
+
+Hunting: Tracks an eligible enemy from above.
+
+Attacking: Uses its normal 2-damage attack.
+
+Scouting: Investigates a room feature instead of attacking.
+
+Falling: Resolves its death effect.
+
+Destruction — Falling Machine
+
+If destroyed while overhead:
+
+* Identify the closest eligible unit below.
+* Deal 2 impact damage to that unit.
+* Apply normal faction and environmental targeting rules.
+* If no eligible unit exists, the Walker falls harmlessly.
+
+Falling damage cannot trigger another fall from the same machine instance.
+
+Player commands
+
+Hunt: Seek the nearest valid enemy.
+
+Perch: Remain at the current overhead position.
+
+Scuttle: Move toward a selected valid location.
+
+Scout: Investigate a designated feature.
+
+Drop: Deliberately descend, forfeiting the overhead advantage until climbing again.
+
+Special interaction — Wrong Hallway
+
+During Something Behind You, the Walker can scout the source of the noise.
+
+Possible results:
+
+* Reveal the approaching enemy and its location.
+* Identify damaged equipment on the enemy.
+* Discover an alternate passage.
+* Alert the enemy and lose the surprise advantage.
+
+A failed scouting attempt should not automatically destroy the Walker.
+
+Additional interactions
+
+* Builder Drones can repair it when physically accessible.
+* A destroyed Walker may produce wreckage for the Scrap Shepherd.
+* Panic Jack can intercept eligible attacks against it while it is reachable.
+* The Faulty Access Badge can improve its access to restricted maintenance passages, if the room supports them.
+
+Visual behavior
+
+The Walker should travel along overhead structures, suspend itself by articulated legs, fold around ceiling obstacles, and visibly lose grip when destroyed.
+
+If the game has no ceiling geometry, implement an elevated-state indicator and appropriate targeting rules rather than requiring a new 3D traversal system.
+
+⸻
+
+5. Card 3 — Panic Jack
+
+Type: Machine Ally
+Rarity: Uncommon
+Cost: 2 Scrap
+HP: 5
+Attack: 1
+
+Core ability — Protective Panic
+
+Panic Jack can assign one allied unit as its protected target.
+
+Once per encounter, when an eligible enemy attack would damage that target, Panic Jack intercepts the attack.
+
+Resolve the original attack against Panic Jack instead.
+
+If Jack survives the intercepted damage, it immediately counterattacks the attacker for 2 damage, provided the attacker remains a valid target.
+
+Target assignment
+
+Support:
+
+* Protect the player character, if the normal guard system allows it.
+* Protect another machine ally.
+* Protect a vulnerable deployed support unit.
+* Clear the assignment.
+* Reassign when command rules permit.
+
+An interception requires a valid defensive position or an equivalent abstract guarding relationship.
+
+Interception restrictions
+
+* One interception per encounter.
+* Does not prevent environmental damage that cannot be intercepted.
+* Cannot intercept attacks targeting Jack itself.
+* Does not intercept attacks that explicitly bypass guards.
+* Cannot counterattack after being destroyed.
+* Does not trigger another interception through its counterattack.
+
+Secondary behavior — Panicked Retaliation
+
+If its assigned protected ally is destroyed:
+
+* Panic Jack becomes uncontrolled for one turn.
+* Gain +2 damage to its normal attacks for the remainder of the encounter.
+* Its next autonomous action prioritizes a valid enemy associated with the destruction.
+* If that enemy is unavailable, select another valid hostile target.
+
+The damage bonus is applied once and does not stack from subsequent losses.
+
+Uncontrolled behavior
+
+During the uncontrolled turn:
+
+* Ignore ordinary movement and target commands.
+* Prioritize attacking.
+* Avoid deliberately attacking allies unless an existing malfunction system explicitly permits this.
+* Return to normal command acceptance afterward.
+
+Manual Override Hand interaction
+
+Manual Override Hand can cancel the uncontrolled turn.
+
+Doing so:
+
+* Restores player control immediately.
+* Preserves the +2 damage bonus.
+* Causes the Hand’s normal 1 self-damage penalty.
+* Consumes the machine’s ordinary action rather than granting a free additional attack.
+
+Special reactions
+
+Protected Builder Drone: Jack physically interposes itself between the drone and an attacker.
+
+Protected Scrap Shepherd: Jack can save a valuable salvage carrier.
+
+Protected Inert Warframe: Jack may guard the Warframe while its activation counter progresses.
+
+Threat Beacon: Jack does not automatically protect a Beacon unless assigned.
+
+Personality
+
+Panic Jack should appear protective but excessively reactive.
+
+Suggested animations:
+
+* Sudden head turns toward nearby sounds.
+* Oversized fist raised defensively.
+* Frantic repositioning when its assigned unit is attacked.
+* Brief loss of balance after intercepting a heavy blow.
+* Aggressive, unstable movement after losing its protected ally.
+
+⸻
+
+6. Card 4 — Unfinished Warframe
+
+Type: Rare Machine Ally
+Cost: 3 Scrap
+HP: 8
+Attack: 3
+Initial State: Inert
+
+Core ability — Incomplete Startup
+
+The Warframe enters play as an unfinished combat machine.
+
+It cannot immediately attack or move.
+
+It requires two activation progress points before becoming operational.
+
+Activation rules
+
+Two supported methods:
+
+Passive Startup
+
+* Gain one activation point at the end of each full owner turn after deployment.
+* After two points, activate.
+
+Builder Drone Commissioning
+
+* A Builder Drone may spend a successful maintenance action working on the Warframe.
+* Each such action grants one activation point.
+* These points count toward the same two-point total.
+
+The methods may combine. For example, one normal startup turn and one Builder Drone operation can complete activation.
+
+Multiple drones can accelerate commissioning if their maintenance actions genuinely become available.
+
+The player should be able to direct a maintenance-eligible drone toward commissioning, using an existing command or a contextual maintenance choice. This replaces that maintenance action; it is not free additional work.
+
+Activation completion
+
+When activation reaches two points:
+
+1. Play the startup animation.
+2. Change state from Inert to Active.
+3. Enable normal Warframe commands.
+4. Permit its first attack on its next eligible action.
+5. Remove the startup progress indicator.
+
+Do not allow an immediate bonus attack solely because the activation counter reached two.
+
+Vulnerability while inert
+
+The inactive Warframe:
+
+* Can be damaged.
+* Can be repaired.
+* Can be protected by Panic Jack.
+* Can be subjected to compatible enemy interference.
+* Does not defend itself.
+
+Corrupted Startup
+
+If the Warframe is heavily damaged before activation, a corrupted startup may occur.
+
+Proposed threshold: 3 HP or less at activation.
+
+Proposed malfunction chance: 30%.
+
+On failure, enter a temporary Hostile Startup state.
+
+Hostile Startup behavior
+
+* The Warframe changes allegiance temporarily.
+* It chooses an eligible player-side target.
+* It remains hostile until the player successfully resets its systems or the corruption expires.
+* The condition must have a guaranteed finite resolution.
+
+Suggested default: one hostile action, followed by a system stabilization check that returns control, unless a separate encounter explicitly establishes a longer malfunction.
+
+Recovery options
+
+Emergency Reset
+
+* Spend 1 Energy to end hostile startup, if the player has an eligible control action.
+
+Builder Drone Reset
+
+* Spend a maintenance activation attempting to restore Warframe control.
+
+Manual Override Hand
+
+* Cancel the startup malfunction and immediately restore player control under the Hand’s normal rules.
+
+Disable the Warframe
+
+* Use standard control or damage mechanics to incapacitate it.
+
+Do not require the Manual Override Hand as the only solution.
+
+Additional options
+
+Partial Activation
+
+* With one progress point, the player may abort startup.
+* Recover 1 Scrap.
+* The Warframe remains inactive until normal activation resumes or the encounter ends.
+
+Emergency Commissioning
+
+* Spend 2 Energy to gain one activation point immediately.
+* Once per deployed Warframe.
+* Cannot exceed the two-point activation requirement.
+
+These are optional player-facing mechanics that should be configurable.
+
+Battlefield appearance
+
+The Warframe should visibly become more complete during startup:
+
+* Hydraulic pistons engage.
+* Armor panels secure themselves.
+* Internal lights activate.
+* Weapon mounts align.
+* Main combat systems initialize.
+* An unstable startup produces a distinctly different warning sequence.
+
+Do not require custom model-specific animations if the current models are temporary.
+
+⸻
+
+7. Card 6 — Faulty Access Badge
+
+Type: Utility
+Cost: 1 Energy
+
+Core ability — Maintenance Authorization
+
+Present a temporary facility credential to nearby compatible machines.
+
+For two turns, eligible neutral maintenance systems recognize the player as authorized personnel.
+
+Eligible targets
+
+* Neutral Builder Drones.
+* Maintenance terminals.
+* Non-hostile repair machines.
+* Industrial access systems.
+* Compatible security checkpoints.
+
+Do not automatically pacify actively hostile combat units.
+
+Benefits
+
+While the Badge is accepted:
+
+* Neutral machines do not immediately treat ordinary proximity as trespassing.
+* Certain maintenance interactions become available.
+* The player may approach restricted equipment.
+* The player may request limited repairs or information.
+* Some access-related encounter options become easier.
+
+Expiration — Security Verification
+
+At the end of the second turn, affected systems perform a security verification.
+
+Proposed baseline:
+
+* 65%: Credential fails quietly; machines return to normal.
+* 35%: Credential is flagged; increase Threat by 1.
+
+Hostile player actions can increase detection probability.
+
+Failed authorization reactions
+
+* Maintenance drones stop cooperating.
+* Security lights activate.
+* Doors may lock according to existing room rules.
+* Nearby machines may become suspicious.
+* Some security-capable units investigate.
+
+Do not automatically convert every neutral machine into an enemy.
+
+Interactions
+
+Builder Drone: Recognizes the player as a maintenance supervisor where its programming permits.
+
+Scrap Shepherd: Can retrieve certain normally restricted wreckage.
+
+Ceiling Walker: Gains access to an authorized maintenance route.
+
+The Patient Machine: Unlocks an alternative diagnostic interaction.
+
+Wrong Hallway: May allow the player to distinguish legitimate facility routes from anomalous passages.
+
+Anti-exploit rules
+
+* Reusing the Badge does not indefinitely extend authorization on the same machines.
+* A failed credential remains flagged for the rest of that room.
+* Attacking an authorized neutral machine cancels its trust.
+* Credential checks must use seeded randomness.
+
+⸻
+
+8. Card 8 — Sealant Coffin
+
+Type: Utility
+Cost: 1 Energy
+
+Core ability — Encapsulate Target
+
+Cover an eligible machine in rapidly hardening industrial sealant.
+
+The target becomes immobilized for two of its action opportunities.
+
+At expiration, restore 3 HP if the target is still alive.
+
+Friendly target
+
+On an allied machine:
+
+* Prevent movement.
+* Prevent attacks and autonomous actions.
+* Suspend ordinary maintenance actions.
+* Preserve existing upgrades and attachments.
+* Restore up to 3 HP when the sealant expires.
+
+The target remains subject to applicable damage; the sealant is not invulnerability.
+
+Enemy target
+
+On an eligible enemy:
+
+* Temporarily prevent movement and attacks.
+* Apply normal resistance rules.
+* Heal the enemy when the effect expires if it survives.
+
+This makes the card an emergency disable with a potentially dangerous downside.
+
+Proposed resistance
+
+Target	Result
+Standard mechanical enemy	Full two-action immobilization
+Heavy mechanical enemy	One-action immobilization
+Boss	One-action disruption only if susceptible
+Explicitly immune target	No effect; reject invalid use before spending resources
+
+Final resistances remain TUNE LATER.
+
+Additional options
+
+Release Early
+
+* End the sealant effect prematurely.
+* Restore only 1 HP.
+* Useful when the player needs the machine to act immediately.
+
+Keep Sealed
+
+* Allow the normal two-action duration to complete.
+* Restore the full 3 HP.
+
+Break the Seal
+
+* Affected enemies with a specific breakout capability may spend an action to remove the status.
+* If successful, cancel the remaining duration and final healing.
+
+Special interactions
+
+Scrap Shepherd
+
+* Can be sealed while carrying salvage.
+* Retains cargo.
+* Cannot collect additional wrecks.
+
+Panic Jack
+
+* Cannot intercept while immobilized.
+* Preserves its assigned protection target.
+
+Unfinished Warframe
+
+* Passive startup pauses while sealed.
+* Existing activation progress is retained.
+* Repairs may still be applied only if existing status rules allow external repair.
+
+Ceiling Walker
+
+* May be sealed only while a valid target under the game’s positioning rules.
+* Does not automatically fall merely because immobilized.
+
+Builder Drone
+
+* Maintenance cycle pauses during sealing.
+* Resumes afterward without granting missed automatic actions.
+
+Distinction from Maintenance Foam
+
+Sealant Coffin is a two-action disable followed by substantial repair, while Maintenance Foam remains the previously proposed one-turn protection and minor repair tool.
+
+Do not silently merge their effects.
+
+⸻
+
+9. Card 9 — Black-Box Recorder
+
+Type: Nightmare Reaction
+Cost: 1 Scrap
+
+Trigger — Allied Machine Destroyed
+
+When an allied machine is destroyed, offer Black-Box Recorder as a reaction if available.
+
+Upon activation:
+
+* Spend 1 Scrap.
+* Draw 2 cards.
+* Gain 1 Madness.
+* Mark the effect as used for the encounter.
+
+Restrictions
+
+* Once per encounter across Black-Box Recorder activations.
+* Do not trigger from discarded cards that were never deployed.
+* Do not trigger from normal expiration of a temporary effect unless it was actually destroyed.
+* Do not permit repeated triggering from the same destroyed machine.
+* Apply ordinary hand-size and draw-pile rules.
+
+Mechanical role
+
+This card makes machine casualties tactically useful without preventing their consequences.
+
+The player receives replacement options after losing an ally but pays in Madness.
+
+Presentation
+
+Display a small mechanical recording device replaying corrupted data from the destroyed machine.
+
+Possible messages:
+
+* “UNIT LOSS CONFIRMED.”
+* “FINAL ACTION UNRECOVERABLE.”
+* “REPLAYING LAST COMMAND.”
+* “OPERATOR NOT FOUND.”
+* “RECORDING CONTAINS UNKNOWN VOICE.”
+
+These messages are atmospheric and do not establish that machines possess human memories or consciousness.
+
+Special interactions
+
+Panic Jack
+
+* If destroyed during interception, Black-Box Recorder may trigger.
+
+Unfinished Warframe
+
+* Can record its destruction even before activation.
+
+Scrap Shepherd
+
+* Its wreckage remains available for separate salvage collection.
+
+Dead Pilot’s Reflex
+
+* Both reactions may become eligible from the same destruction.
+* Resolve their order using a deterministic reaction queue.
+* Neither reaction triggers itself.
+
+⸻
+
+10. Card 11 — Manual Override Hand
+
+Type: Nightmare Equipment
+Cost: 2 Scrap
+
+Core ability — Direct Intervention
+
+Once per encounter, cancel one eligible allied-machine malfunction and manually select that machine’s next ordinary action.
+
+After the controlled action resolves, deal 1 damage to the machine.
+
+Eligible malfunctions
+
+* Possessed Builder wrong-target maintenance.
+* Panic Jack temporary command loss.
+* Unfinished Warframe corrupted startup.
+* Other explicitly tagged allied-machine malfunctions.
+
+The Hand must not function as unrestricted mind control over enemy units.
+
+Activation sequence
+
+1. Detect a malfunction about to resolve or currently preventing an eligible command.
+2. Show the Manual Override opportunity.
+3. Player selects Override.
+4. Cancel the malfunction’s immediate negative behavior.
+5. Choose one legal normal action for the affected machine.
+6. Resolve that action.
+7. Apply 1 damage to the machine.
+8. Mark the Hand as used for the encounter.
+
+If the machine is destroyed by the self-damage, process destruction and wreckage normally.
+
+Targeted interactions
+
+Possessed Builder
+
+* Prevent an unwanted enemy repair.
+* Choose an allied repair target instead.
+
+Panic Jack
+
+* Cancel its uncontrolled turn.
+* Direct its next normal action.
+
+Unfinished Warframe
+
+* Restore control after a corrupted startup.
+* Allow ordinary Warframe action timing to resume.
+
+Scrap Shepherd
+
+* Not normally eligible because autonomous scavenging is not a malfunction.
+
+Ceiling Walker
+
+* Not normally eligible simply because the player dislikes its chosen attack.
+
+Longer-term machine reactions
+
+PROPOSED optional atmospheric feature:
+
+Track the number of Manual Override uses during a run.
+
+At higher counts, machines may:
+
+* Hesitate before receiving commands.
+* Produce unusual diagnostics.
+* Display unexplained recognition messages.
+* Briefly attempt to return to previous autonomous priorities.
+
+Do not introduce an unavoidable combat penalty without a separate balance decision.
+
+These are presentation and event hooks, not confirmed lore.
+
+⸻
+
+11. Card 14 — The Patient Machine
+
+Type: Rare Encounter
+Theme: Abandoned repair ward / disabled combat machine
+
+Encounter setup
+
+The player discovers a large damaged machine connected to an industrial maintenance cradle.
+
+Its combat systems are offline.
+
+Its diagnostic screen repeatedly requests repair.
+
+The machine may display fragments of corrupted operational records, damaged mission instructions, or incomplete warnings.
+
+It is not initially hostile.
+
+Player options
+
+Implement four primary approaches.
+
+A. Repair the Patient
+
+Spend 2 Scrap, or complete two eligible Builder Drone maintenance actions.
+
+On success:
+
+* Restore the machine to basic functionality.
+* Receive a temporary allied machine for the current encounter or room sequence.
+* Proposed stats: 6 HP / 2 damage.
+* Unlock a small dialogue or diagnostic response.
+
+Proposed danger: 20% chance its damaged combat systems reactivate aggressively during repair.
+
+If hostile activation occurs, the player may disable or stabilize it rather than automatically lose the reward.
+
+B. Strip It for Parts
+
+Carefully dismantle the damaged machine.
+
+Reward:
+
+* Gain 4 Scrap.
+* Chance to recover one uncommon compatible mechanical component or card reward.
+
+Proposed danger: 30% chance the defensive system awakens during dismantling.
+
+The player must finish the hostile encounter or abandon the salvage operation.
+
+Do not guarantee both a full salvage payout and a rare item on every visit.
+
+C. Inspect Its Memory
+
+Spend 1 Energy to recover diagnostic information.
+
+Possible results:
+
+* Reveal a hidden route clue.
+* Learn information about a nearby machine encounter.
+* Identify a maintenance cache.
+* Discover a warning about an anomaly.
+* Unlock an alternate event resolution.
+
+Proposed danger: 25% chance accessing damaged records reactivates a defensive routine.
+
+Do not use machine records to reveal unapproved story canon.
+
+D. Leave It Alone
+
+Decline the encounter.
+
+* No major reward.
+* No combat.
+* Continue along the current route.
+
+The player may still receive a short atmospheric message as they leave.
+
+Special approaches
+
+Faulty Access Badge
+
+* Attempt authorized diagnostic access.
+* Reduce the likelihood of an aggressive security response.
+* Does not guarantee success.
+
+Builder Drone
+
+* Perform repair gradually.
+* May reveal a hidden fault before full activation.
+* Can become a target if the Patient awakens.
+
+Scrap Shepherd
+
+* Assist in collecting salvage after legitimate dismantling.
+* Do not permit repeated collection of the Patient’s same components.
+
+Ceiling Walker
+
+* Inspect overhead diagnostic machinery or inaccessible cables.
+* Reveal one hazard before choosing the primary approach.
+
+Manual Override Hand
+
+* If the Patient is repaired and temporarily allied, the Hand may correct an eligible malfunction.
+* Cannot simply seize control of the neutral Patient before a repair or encounter rule makes it an ally.
+
+Black-Box Recorder
+
+* If the temporarily allied Patient is later destroyed, its destruction may satisfy the Recorder’s normal trigger.
+
+Patient Machine identity
+
+Keep its nature deliberately unresolved.
+
+It may be:
+
+* A damaged industrial machine.
+* An abandoned combat frame.
+* A machine preserving old operator instructions.
+* A malfunctioning repair construct.
+* Something more unusual.
+
+Do not decide that it is conscious, haunted, or connected to a particular established character without further canon approval.
+
+⸻
+
+12. Improvised Army synergy package
+
+Concept
+
+The player constructs a small, increasingly capable fighting force from damaged machinery and battlefield salvage.
+
+Rather than simply playing expensive combat units, the player assembles a support chain:
+
+Builder Drone → Unfinished Warframe → Scrap Shepherd
+
+The Builder Drone accelerates construction and keeps machines repaired.
+
+The Warframe becomes the squad’s primary combat unit.
+
+The Scrap Shepherd gathers wreckage to finance replacements and repairs.
+
+Panic Jack, Ceiling Walker, and the selected equipment cards can extend this approach.
+
+12.1 Squad roles
+
+Unit	Role
+Builder Drone	Maintenance and commissioning
+Scrap Shepherd	Wreck collection
+Unfinished Warframe	Heavy combat
+Panic Jack	Protecting vulnerable machines
+Ceiling Walker	Scouting and elevated attacks
+
+No new faction system is required.
+
+These are ordinary allied machines using existing allegiance rules.
+
+12.2 Coordinated commands
+
+When two or more eligible allied machines are deployed, provide contextual cooperation commands where the existing command interface supports them.
+
+Commission Warframe
+
+Order a Builder Drone to spend its maintenance action advancing a Warframe’s activation.
+
+Protect Assembly
+
+Assign Panic Jack to guard an inert Warframe or the Builder Drone working on it.
+
+Collect Battlefield Wreckage
+
+Order the Scrap Shepherd to prioritize recoverable debris after a machine is destroyed.
+
+Scout Ahead
+
+Use Ceiling Walker to investigate hazards or enemies before exposing the squad.
+
+Emergency Recovery
+
+Apply Sealant Coffin to a badly damaged key machine when temporarily losing its actions is worth the repair.
+
+These commands are contextual uses of existing card abilities, not an additional independent action economy.
+
+12.3 Improvised Army special interaction — Assembly Line
+
+PROPOSED optional synergy:
+
+When a Builder Drone and an Unfinished Warframe are both present, the Warframe gains an Assembly Line indicator.
+
+The indicator tracks completed maintenance work.
+
+With a Scrap Shepherd also present:
+
+* The Shepherd may deliver collected wreckage to the Warframe.
+* Two delivered wrecks can substitute for one Builder Drone commissioning action.
+* Doing so consumes those wrecks without generating the Shepherd’s usual 2 Scrap payout.
+* This contribution can occur only once per Warframe deployment.
+
+This provides an important decision:
+
+Use salvage as money, or sacrifice it to activate combat power sooner?
+
+Do not grant both benefits.
+
+12.4 Improvised Army special encounter — The Assembly Yard
+
+Add a rare optional event to suitable industrial facility rooms.
+
+Setup
+
+The player encounters an abandoned machine assembly station containing:
+
+* Wreckage piles.
+* Functional industrial arms.
+* Damaged frames.
+* An unstable power connection.
+* Potentially hostile maintenance security.
+
+The event becomes richer when the player has a Builder Drone, Scrap Shepherd, or Unfinished Warframe.
+
+Option A — Scavenge the Yard
+
+* Gather a moderate Scrap reward.
+* Risk activating salvage-defense machinery.
+* Shepherd improves collection efficiency.
+
+Option B — Commission a Warframe
+
+* Use the assembly station to add one activation progress point to an existing inert Warframe.
+* May require 1 Energy.
+* Risk triggering a security check.
+
+Option C — Restore Station Power
+
+* Spend 2 Scrap.
+* Restore an industrial machine or support station.
+* Gain a temporary maintenance benefit.
+* Risk activating an unwanted machine.
+
+Option D — Sabotage the Yard
+
+* Destroy the power system.
+* Prevent hostile machinery from activating.
+* Lose access to assembly-related rewards.
+
+Option E — Use False Authorization
+
+If Faulty Access Badge is available:
+
+* Attempt to pass the station security check.
+* Gain access to safer interaction choices.
+* Risk increasing Threat on credential failure.
+
+Option F — Leave
+
+Decline the encounter and preserve resources.
+
+12.5 Improvised Army combat complications
+
+Introduce some enemy responses to machinery-heavy player builds.
+
+Enemy Recovery Crew
+
+* Attempts to retrieve useful wreckage before the Shepherd reaches it.
+
+Machine Saboteur
+
+* Targets an unfinished Warframe’s startup mechanism.
+
+Disruption Unit
+
+* Attempts to disable Builder Drone maintenance for one turn.
+
+Heavy Assault Enemy
+
+* Prioritizes the active Warframe when it becomes the most significant threat.
+
+Security Scanner
+
+* Detects suspicious machine-authority credentials or unauthorized construction activity.
+
+Use these behaviors only for compatible enemies and encounters.
+
+Do not universally punish players merely for using several machine cards.
+
+⸻
+
+13. Worked combat example
+
+Initial state
+
+The player possesses:
+
+* Half-Awake Builder Drone.
+* Scrap Shepherd.
+* Unfinished Warframe.
+* Panic Jack.
+* Sealant Coffin.
+* Black-Box Recorder.
+
+The room contains several hostile security machines.
+
+Turn 1
+
+Deploy Unfinished Warframe.
+
+* Warframe begins inert at 0/2 activation progress.
+* Panic Jack is assigned to guard it.
+* Builder Drone remains available for maintenance.
+* Scrap Shepherd searches for available wreckage.
+
+At the appropriate startup step, Warframe gains its first passive progress point.
+
+Turn 2
+
+An enemy attacks the Warframe.
+
+* Panic Jack intercepts the attack if its defensive conditions are satisfied.
+* Jack survives and counterattacks for 2 damage.
+* A Builder Drone may spend an available maintenance action on commissioning.
+* If that completes 2/2 progress, the Warframe activates.
+
+The newly active Warframe waits until its next eligible normal action to attack.
+
+Turn 3
+
+The Warframe attacks an enemy for 3 damage.
+
+An enemy is destroyed.
+
+* Generate eligible wreckage.
+* Scrap Shepherd begins collection.
+* If two qualifying wrecks have been collected, gain 2 Scrap.
+
+The player now has greater offensive capability, but the Warframe is exposed.
+
+Turn 4
+
+The Warframe becomes heavily damaged.
+
+The player chooses Sealant Coffin.
+
+* Warframe cannot act while sealed.
+* Panic Jack may continue guarding it if eligible.
+* Builder Drone performs other maintenance.
+* Sealant Coffin eventually restores 3 HP.
+
+The player sacrifices short-term offense for future survivability.
+
+Turn 5
+
+A support machine is destroyed.
+
+Black-Box Recorder becomes available.
+
+The player activates it:
+
+* Spend 1 Scrap.
+* Draw 2 cards.
+* Gain 1 Madness.
+
+The army loses a valuable machine, but the player receives new options for continuing the encounter.
+
+This is the desired gameplay cycle: build, protect, salvage, suffer losses, and improvise.
+
+⸻
+
+14. Deterministic implementation and state handling
+
+Each new card should expose its runtime state clearly.
+
+Suggested state fields:
+
+System	State to track
+Scrap Shepherd	Collected wreck IDs, carried count, current collection target
+Ceiling Walker	Ground/elevated state, current target, scouting state
+Panic Jack	Protected target, interception used, uncontrolled turns, retaliation bonus
+Unfinished Warframe	Activation progress, startup state, corrupted startup result
+Faulty Access Badge	Affected machines, remaining turns, security-check result
+Sealant Coffin	Target, remaining action opportunities, early release
+Black-Box Recorder	Encounter-use flag, destruction event reference
+Manual Override Hand	Encounter-use flag, pending overridden action
+Patient Machine	Encounter branch, interaction progress, generated rewards, defensive response
+
+All state changes should be event-driven and saved when the current game supports mid-encounter saving.
+
+Combat safeguards
+
+* Prevent repeated wreck collection.
+* Prevent unlimited Warframe activation from one Builder Drone operation.
+* Prevent Panic Jack from intercepting more than one attack per encounter.
+* Prevent Ceiling Walker from falling multiple times.
+* Prevent repeated Black-Box draws from the same destruction.
+* Prevent Manual Override from granting an extra machine action.
+* Prevent Sealant Coffin from stacking immobilization indefinitely.
+* Prevent Patient Machine reward duplication.
+* Prevent repeated Faulty Access Badge use from creating permanent authorization.
+
+⸻
+
+15. Testing requirements
+
+Machine behavior tests
+
+* Scrap Shepherd collects two eligible wrecks and grants exactly 2 Scrap.
+* A destroyed Shepherd spills unfinished cargo correctly.
+* Ceiling Walker ignores ordinary ground cover but remains vulnerable to valid attacks.
+* A destroyed overhead Walker causes exactly one falling-damage event.
+* Panic Jack intercepts once, takes the intended damage, and counterattacks only if alive.
+* Panic Jack becomes temporarily uncontrolled after its protected ally is destroyed.
+* Unfinished Warframe activates after two normal startup increments.
+* Builder Drone commissioning advances the same startup counter.
+* Damaged Warframe startup can produce a deterministic corruption result.
+
+Equipment and reaction tests
+
+* Faulty Access Badge affects neutral eligible machinery, not arbitrary hostiles.
+* Authorization expires after two turns and performs exactly one security check.
+* Sealant Coffin blocks two eligible action opportunities and restores HP at normal expiration.
+* Enemy healing after Sealant Coffin expiration works correctly.
+* Black-Box Recorder activates once per encounter.
+* Manual Override Hand cancels an eligible malfunction and applies 1 self-damage after the chosen action.
+* Manual Override Hand does not create an extra action or override an ordinary AI decision without a malfunction.
+
+Encounter tests
+
+* Patient Machine resolves all four main choices.
+* Builder Drone repairs can complete the Patient Machine restoration requirement.
+* Salvage rewards cannot be collected repeatedly.
+* Faulty Access Badge unlocks the intended authorization option.
+* Patient Machine defensive activation produces a resolvable encounter.
+* Assembly Yard supports its different branches.
+* Assembly Line consumes wreckage instead of granting duplicate Scrap.
+* Existing room completion remains functional after special encounters.
+
+Integration tests
+
+Run the machine cards together against:
+
+* Ordinary ranged enemies.
+* Melee attackers.
+* Heavy mechanical opponents.
+* Repair-capable enemies.
+* Enemies that collect salvage.
+* Environmental hazards.
+* Wrong Hallway events.
+* Extended encounters with insufficient Scrap.
+
+Observe whether the Improvised Army is viable without becoming self-sustaining indefinitely.
+
+⸻
+
+16. Suggested implementation order
+
+Phase 1 — Basic allied machines
+
+Implement Scrap Shepherd, Ceiling Walker, Panic Jack, and Unfinished Warframe with their core autonomous actions and status transitions.
+
+Phase 2 — Support utilities
+
+Implement Faulty Access Badge, Sealant Coffin, Black-Box Recorder, and Manual Override Hand.
+
+Phase 3 — Encounter content
+
+Implement all Patient Machine branches and their interactions with the new cards.
+
+Phase 4 — Improvised Army integration
+
+Add coordinated commissioning, salvage delivery, contextual commands, and the Assembly Yard event.
+
+Phase 5 — Enemy response and polish
+
+Implement compatible enemy counterplay, contextual dialogue, animations, deterministic test cases, and balance adjustments.
+
+⸻
+
+17. Acceptance criteria
+
+The expansion is ready for an initial playable test when:
+
+1. All nine selected cards work using existing game systems.
+2. Each machine has a recognizable tactical function.
+3. Scrap Shepherd can retrieve and unload wreckage without duplication.
+4. Ceiling Walker can attack from elevated positions and perform scouting.
+5. Panic Jack correctly protects allies and reacts to losing them.
+6. Unfinished Warframe supports normal startup, Builder Drone commissioning, and corrupted startup.
+7. Faulty Access Badge temporarily changes eligible neutral-machine behavior.
+8. Sealant Coffin supports allied healing and enemy immobilization with appropriate costs.
+9. Black-Box Recorder and Manual Override Hand resolve correctly through existing event hooks.
+10. The Patient Machine has its complete interactive encounter and risk/reward branches.
+11. Improvised Army supports cooperative salvage, commissioning, protection, and battlefield adaptation.
+12. All rewards, temporary allies, and encounter outcomes have bounded, reproducible behavior.
+
+OPEN / TUNE LATER
+
+Keep these decisions explicitly unresolved:
+
+* Final Scrap costs and encounter frequency.
+* Exact ceiling and elevation mechanics.
+* Warframe corruption threshold and probability.
+* Badge authorization failure rates.
+* Patient Machine reward rarity.
+* Whether longer machine-memory consequences should have mechanical effects.
+* How much command control autonomous allies should receive.
+* Final Scrap generation rate for sustained machine-heavy decks.
+* Whether Assembly Line requires specific cards or becomes a more general support mechanic.
+* Whether the Patient Machine’s records have any eventual narrative significance.
+
+Design target: The player should feel increasingly capable of assembling a little army from whatever survives the descent. The machines should be useful individually, stronger when coordinated, and vulnerable in ways that create interesting decisions rather than arbitrary punishment.
+
+A successful Improvised Army run should tell a small mechanical story: rescuing an unfinished Warframe, protecting it while it awakens, gathering broken parts to keep the squad running, and deciding how much control to exert when its machinery begins behaving strangely.

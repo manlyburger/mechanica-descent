@@ -1,0 +1,1432 @@
+MECHANICA DESCENT
+
+Card Expansion & Encounter Implementation Brief
+
+Scope: 12 base cards, 7 named variants/upgrades, new encounter behaviors, branching choices, special interactions, and supporting systems.
+
+Status: PROPOSED — implementation specification, not confirmation of existing functionality.
+
+⸻
+
+1. Core implementation goals
+
+Expand Mechanica Descent with a connected collection of mechanical allies, salvage parasites, improvised equipment, hazardous technology, and anomalous facility encounters.
+
+The three principal additions are:
+
+1. Half-Awake Builder Drone: An autonomous machine ally with imperfect but useful maintenance behavior, upgrade paths, and special encounters.
+2. Salvage Leech: A reusable parasite that exploits damaged machines, creates economic opportunities, and provokes enemy countermeasures.
+3. Wrong Hallway: A rare encounter modifier producing additional events, navigation decisions, risks, and salvage opportunities.
+
+Also implement the other nine cards previously proposed, including their distinctive behaviors and synergies.
+
+Design requirements
+
+* Preserve established combat, deck, navigation, Energy, Scrap, Madness, Threat, and damage mechanics wherever present.
+* Integrate with existing enemy classes rather than replacing enemy AI.
+* Ensure every card produces visible gameplay feedback.
+* Provide meaningful choices around additional danger versus additional rewards.
+* Make friendly machines and enemies respond to attachments, repairs, salvage, and altered navigation.
+* Allow machines to malfunction without becoming randomly useless.
+* Avoid permanent softlocks, unlimited resource generation, and unstoppable card-effect recursion.
+* Keep new probabilities and costs configurable for balancing.
+* Do not assume that an unverified mechanic is already implemented.
+
+Where this brief uses a combat system concept not currently supported, implement the smallest compatible equivalent rather than creating an unrelated subsystem.
+
+⸻
+
+2. Common card and encounter framework
+
+2.1 Card categories
+
+Support these tags for the new content:
+
+Category	Function
+Machine Ally	Deploys an allied machine with HP and autonomous behaviors
+Attachment	Connects a persistent effect to a target
+Equipment	Modifies an existing character or weapon
+Consumable	Produces an immediate or limited-charge effect
+Structure	Deploys a persistent defensive or tactical object
+Reaction	Activates in response to a combat event
+Encounter Modifier	Alters a room’s progression, rewards, or threats
+Nightmare	Interacts with Madness or anomalous behavior
+
+Cards can carry multiple tags.
+
+2.2 Proposed timing rules
+
+Use a consistent event sequence:
+
+1. Player chooses an action.
+2. Validate cost, target, and available actions.
+3. Pay costs.
+4. Resolve attacks, movement, or direct effects.
+5. Process damage and associated triggers.
+6. Process destruction and death effects.
+7. Resolve attachments and salvage recovery.
+8. Resolve end-of-turn machine behaviors.
+9. Check combat completion and encounter modifiers.
+10. Present rewards or navigation choices.
+
+Effects must not recursively trigger themselves unless explicitly permitted.
+
+In particular:
+
+* Leech damage cannot trigger another Leech extraction.
+* Builder Drone repair does not count as salvage damage.
+* Gun Nest attacks cannot generate additional Gun Nest actions.
+* Dead Pilot’s Reflex cannot generate a second Reflex through its own effects.
+* Wrong Hallway cannot trigger another Wrong Hallway inside its own extension encounter.
+
+2.3 Persistence
+
+Track each deployed machine’s:
+
+* HP and maximum HP.
+* Current room and position, if positioning exists.
+* Active attachment or upgrade.
+* Behavior state and cooldown.
+* Remaining charges, where applicable.
+* Ownership and faction.
+* Temporary disabling effects.
+* Pending salvage rewards.
+* Whether it has acted this turn.
+
+Use the game’s existing rules for ally persistence between rooms. If allies do not persist, preserve only card ownership and upgrades.
+
+All random rolls must use the run’s seeded RNG when available, so identical actions under identical states reproduce identical results.
+
+⸻
+
+3. Half-Awake Builder Drone
+
+Type: Machine Ally
+Rarity: Common
+Proposed cost: 2 Scrap
+Stats: 4 HP / 1 damage
+
+Primary effect — Uncertain Maintenance
+
+Every second turn after deployment, the drone performs one maintenance operation.
+
+Patch Job
+
+* Restore 2 HP to a damaged allied Tech card or compatible mechanical object.
+* Cannot exceed target maximum HP.
+* Prioritize eligible targets with the largest missing HP percentage.
+* Resolve ties randomly using seeded RNG.
+
+Scrap Sorting
+
+* Generate 1 Scrap.
+* Show an animation of the drone dragging, sorting, or dismantling mechanical debris.
+
+Selection rules
+
+* If only repair is possible, repair.
+* If only salvage is possible, salvage.
+* If both are possible, choose randomly.
+* If neither is possible, enter a short idle animation without consuming the next maintenance opportunity.
+
+The drone’s Scrap generation represents small recoverable machine fragments, not duplication of existing high-value loot.
+
+Secondary ability — Emergency Repair
+
+The player may spend 1 Energy to command an immediate 1 HP repair.
+
+* Requires a valid damaged allied mechanical target.
+* Can be used once per player turn.
+* Does not reset the normal two-turn maintenance cycle.
+* Cannot repair the drone itself unless permitted by existing self-repair rules.
+
+Wreckage response — Builder’s Instinct
+
+When another allied machine is destroyed, the Builder Drone remembers its wreckage.
+
+On its next autonomous action, it attempts to move toward that wreckage if movement is supported.
+
+Once near the wreckage, it may:
+
+* Collect ordinary salvage.
+* Perform a permitted recovery interaction.
+* Resume its normal maintenance work.
+
+This behavior must never override a direct player command.
+
+Last Useful Act
+
+When destroyed, the drone leaves 1 recoverable Scrap.
+
+The Scrap is awarded when the wreckage is safely recovered, or at room completion if the game has no spatial salvage collection.
+
+Do not generate Scrap repeatedly from revival or redeployment of the same destroyed instance.
+
+3.1 Builder Drone upgrade paths
+
+Implement the following as mutually exclusive upgrades to the base card. A run may contain multiple Builder Drones with different upgrades, but one drone instance may use only one specialization.
+
+A. Fully Awake Drone
+
+* Player chooses Patch Job or Scrap Sorting whenever a maintenance action is available.
+* Keeps the same two-turn interval.
+* Keeps the 2 HP repair and 1 Scrap generation values.
+* Retains Emergency Repair.
+
+This is the dependable control-focused upgrade.
+
+B. Scavenger Drone
+
+* Generates 2 Scrap per maintenance activation.
+* Cannot perform Patch Job.
+* Can still move toward wreckage and collect salvage.
+* Emergency Repair is disabled.
+
+This version rewards salvage-heavy decks.
+
+C. Overworked Drone
+
+* Performs one maintenance action every turn.
+* After every third successful maintenance action, loses 1 HP.
+* Can be repaired by another machine.
+* Must give the player a visible warning when nearing destruction.
+
+This version provides rapid value but is difficult to sustain.
+
+D. Possessed Builder
+
+* Repairs 3 HP per activation.
+* When damaged allied and enemy Tech targets are both eligible, has a proposed 20% chance of selecting an enemy target.
+* Otherwise prefers allied machinery.
+* Has unsettling animation and audio cues.
+* Does not automatically switch factions.
+
+The malfunction chance and healing amount are TUNE LATER values.
+
+3.2 Autonomous behavior and personality
+
+Give builder drones compact but distinct animations:
+
+* Repeatedly welding the same piece of armor.
+* Dragging oversized metal panels.
+* Extending several small repair arms.
+* Sorting scrap into neat piles.
+* Becoming confused between two damaged machines.
+* Attempting to repair a destroyed ally before recognizing its condition.
+* Emitting a distressed chirp when machinery collapses nearby.
+* Performing a brief celebration after a successful repair.
+
+Animations should be functional and inexpensive to produce.
+
+3.3 Special event — The Drone Remembers
+
+A living allied Builder Drone may recognize an abandoned maintenance signal while exploring eligible facility rooms.
+
+The drone attempts to reach a sealed wall, machinery hatch, or unfinished construction project.
+
+Present three options:
+
+Follow the Drone
+
+* Enter a short optional exploration event.
+* Potential results: hidden salvage, machine parts, an unfinished device, or a dangerous reactivated system.
+* The drone remains exposed to event hazards.
+
+Recall the Drone
+
+* Cancel exploration.
+* Preserve the ally.
+* Lose the optional special reward.
+
+Allow Independent Investigation
+
+* The drone temporarily becomes unavailable.
+* After a short interval, it returns with salvage, returns damaged, or requires recovery.
+* Never remove the drone permanently without a clearly communicated and avoidable risk.
+
+Avoid frequent repetition of this event during one run.
+
+⸻
+
+4. Salvage Leech
+
+Type: Tech Attachment
+Rarity: Uncommon
+Cost: 1 Scrap
+Target: Enemy machine or compatible mechanical enemy
+
+Primary effect — Opportunistic Extraction
+
+Attach the Leech to an eligible enemy.
+
+Whenever its host receives at least 3 total damage during one turn:
+
+* Generate 1 Scrap.
+* Play a mechanical cutting or extraction effect.
+* Advance its extraction counter.
+
+Maximum: 3 successful extractions per attachment.
+
+The trigger checks cumulative qualifying damage during the turn, not every individual hit.
+
+Armor Stripping
+
+After the second successful extraction, reduce the host’s armor by 1 for the remainder of the encounter.
+
+Apply this once per Leech attachment.
+
+The Leech cannot repeatedly strip the same armor point by detaching and reattaching during the same encounter.
+
+Host destruction
+
+When the host dies:
+
+* Resolve final qualifying damage and extraction first.
+* Roll a proposed 25% destruction chance.
+* On survival, return the Leech card to the discard pile.
+* On destruction, remove that deployed Leech instance from the current encounter.
+
+Permanent removal from the player’s deck is not part of the default implementation.
+
+Permanent loss may be considered separately as a Nightmare difficulty modifier.
+
+Alternative action — Risky Extraction
+
+The player may manually cash out an attached Leech.
+
+* Gain 2 Scrap.
+* Deal 1 damage to the host.
+* Destroy the deployed Leech instance for the encounter.
+* This effect cannot trigger its own extraction.
+* Only available once per attachment.
+
+If this action kills the host, resolve normal enemy death and rewards without adding another Leech extraction.
+
+4.1 Enemy reactions
+
+Give enemies different responses based on behavioral tags.
+
+Defensive machine
+
+* Attempts to shake off or remove the Leech.
+* May sacrifice its own attack to perform a purge.
+* Prioritizes protecting damaged components.
+
+Aggressive machine
+
+* Continues attacking.
+* May become more reckless.
+* Can accidentally expose additional weak points.
+* Does not automatically lose offensive capability.
+
+Repair-capable enemy
+
+* May target the Leech with a removal operation.
+* May abandon repairs to perform the operation.
+* Other allied machines may assist.
+
+Piloted enemy machine
+
+* Displays alarmed radio dialogue.
+* May attempt an emergency system purge.
+* May tear away one armor point to remove the parasite.
+
+Example dialogue:
+
+* “Something’s cutting into my chassis!”
+* “Maintenance, get this thing OFF!”
+* “It’s inside the armor plating!”
+* “Forget the damage! Pull it out!”
+
+Heavy enemy or boss
+
+May possess a purge action that ejects the Leech onto the battlefield.
+
+An ejected Leech remains recoverable for one player turn.
+
+Possible player responses:
+
+* Retrieve it.
+* Allow a Builder Drone to collect it.
+* Reattach it to a compatible enemy if normal action rules permit.
+* Abandon it.
+
+If an enemy crushes the ejected Leech, it is lost for that encounter.
+
+All AI counters need visible preparation or telegraphing.
+
+⸻
+
+5. Salvage Leech variants
+
+5.1 Blood-Scrap Leech
+
+Type: Tech Attachment / Nightmare
+
+Whenever extraction succeeds:
+
+* Generate the normal Scrap.
+* Deal 1 additional damage to the host.
+* The additional damage cannot trigger extraction.
+
+Retains the normal attachment limit.
+
+This is a more aggressive version of the Salvage Leech.
+
+5.2 Symbiotic Leech
+
+Type: Allied Tech Attachment
+
+Attach to a friendly machine.
+
+Whenever that machine receives a successful repair:
+
+* Generate 1 Scrap.
+* Maximum twice per encounter.
+
+Self-healing, repeated zero-value repair attempts, and blocked overhealing must not activate it.
+
+A repair must restore at least 1 actual HP.
+
+This creates synergy with Builder Drones and defensive structures.
+
+5.3 Queen Salvager
+
+Type: Rare Tech Attachment
+
+Receives the base Leech extraction effects.
+
+When its host dies, it may deploy one temporary basic Salvage Leech onto another eligible surviving enemy.
+
+Restrictions:
+
+* Maximum one offspring per Queen Salvager attachment.
+* Offspring cannot create additional offspring.
+* Offspring expires after the current encounter.
+* Requires a valid enemy target.
+* Cannot attach to an already occupied incompatible attachment slot.
+* If no target exists, the reproduction effect is skipped.
+
+The Queen itself still resolves its normal survival or destruction roll.
+
+⸻
+
+6. Wrong Hallway
+
+Type: Encounter Modifier
+Rarity: Rare
+Theme: Facility anomaly / spatial inconsistency
+
+Basic trigger
+
+When activated on an eligible room, Wrong Hallway modifies its completion sequence.
+
+The normal encounter occurs first.
+
+After it finishes, the expected exit disappears or no longer matches the room layout.
+
+The player receives a navigation decision rather than immediately completing the room.
+
+An additional encounter, obstacle, or choice-based event may follow.
+
+Hard limits
+
+* Only one Wrong Hallway extension per normal room.
+* Wrong Hallway cannot trigger itself.
+* Extra enemies cannot generate unlimited duplicate loot.
+* The player must always have a resolvable escape route.
+* Failed optional exploration must not erase previously earned base-room rewards.
+* Navigation must eventually return to the normal progression system.
+
+6.1 Player navigation choices
+
+Option A — Force the Exit
+
+Cost: 2 Energy.
+
+The player forces a mechanical exit, cuts through a malfunctioning lock, or overrides the facility system.
+
+Effects:
+
+* Avoid the additional encounter.
+* Claim only 1 bonus Scrap instead of the full anomaly reward.
+* Return to ordinary room progression.
+
+If insufficient Energy exists, disable the option visibly. Do not make it the only escape method.
+
+Option B — Search the Walls
+
+Spend one exploration action investigating unusual panels, door seams, or machinery.
+
+Proposed outcomes:
+
+* 60%: Find a small cache worth 2 Scrap.
+* 40%: Trigger a minor hazard or alert an enemy.
+
+A successful search does not automatically end the hallway.
+
+Prevent repeated farming by permitting only one wall search per anomaly.
+
+Option C — Follow the Noise
+
+Commit immediately to the hallway’s additional encounter.
+
+* Reveal the selected event.
+* Do not charge the normal Force the Exit Energy cost.
+* Permit event-specific rewards and interactions.
+* In exchange, expose the player to its full danger.
+
+Option D — Send a Builder Drone
+
+Available when an allied Builder Drone is active.
+
+Temporarily dispatch the drone into an alternate route.
+
+Potential results:
+
+* Discover a safe passage.
+* Find extra Scrap.
+* Reveal the next enemy.
+* Become separated.
+* Return damaged.
+* Activate a hidden maintenance system.
+
+Proposed default outcome weights:
+
+* 40% safe reconnaissance.
+* 25% salvage discovery.
+* 20% separated drone.
+* 15% hazardous discovery.
+
+These probabilities are TUNE LATER.
+
+The drone must remain recoverable if separated.
+
+Option E — Mark the Corridor
+
+Record the unusual geometry using navigation equipment or a manual marking.
+
+Effects:
+
+* Gain a temporary navigation knowledge flag.
+* On the next Wrong Hallway occurrence, reveal one extra piece of information before choosing.
+* Potentially reduce the next anomaly’s initial danger.
+* Consume the flag after use.
+
+This must not create an unrestricted stack of permanent navigation benefits.
+
+⸻
+
+7. Wrong Hallway event pool
+
+Implement all four primary events below, plus the special combined-card event in Section 8.
+
+7.1 Maintenance Shift
+
+The player enters a room full of apparently dormant construction machinery.
+
+Multiple Builder Drones activate and attempt to repair surrounding objects.
+
+Initial state
+
+* Machines are neutral.
+* Some repair damaged structures.
+* Some attempt to repair disabled hostile machines.
+* Others are occupied with harmless tasks.
+
+Player options
+
+Remain Unnoticed
+
+* Move carefully through the maintenance area.
+* Avoid hostile interaction if no alarms are triggered.
+* Receive a small safe salvage reward.
+
+Redirect the Drones
+
+* Spend an available interaction or compatible resource.
+* Attempt to redirect repairs toward the player’s equipment.
+* Success grants repair value.
+* Failure may activate nearby machinery.
+
+Dismantle the Drones
+
+* Attack neutral units for Scrap.
+* Nearby maintenance machines become defensive or hostile.
+* Risk losing valuable environmental assistance.
+
+Assist Maintenance
+
+* Spend Scrap or Energy to complete a repair.
+* Unlock a larger cache or possible machine ally reward.
+
+Behavior requirements
+
+Neutral drones must visibly respond to:
+
+* Damage.
+* Repair requests.
+* Hostile machines.
+* Allied Builder Drones.
+* Salvage Leech attachments.
+
+They should not all behave identically.
+
+⸻
+
+7.2 Something Behind You
+
+The hallway produces heavy footsteps and machinery sounds.
+
+No enemy is initially visible.
+
+Sequence
+
+1. Present audio or text warning.
+2. Allow a short reaction window.
+3. Check whether the player scans, prepares, or continues.
+4. Reveal a damaged mechanical enemy behind the party.
+
+Player options
+
+Prepare an Ambush
+
+* Spend an action.
+* Gain a first-attack advantage if the enemy appears.
+
+Scan the Hallway
+
+* Reveal the enemy’s general threat class.
+* May expose its damaged component.
+
+Keep Moving
+
+* Preserve resources.
+* Risk enemy initiative.
+
+Hide or Avoid
+
+* Attempt to bypass the enemy using existing evasion rules, if supported.
+
+Enemy special feature
+
+The enemy retains visible signs of previous combat.
+
+It may have:
+
+* Missing armor.
+* Broken weapon mounts.
+* Damaged sensors.
+* Reduced movement.
+* A damaged or malfunctioning power system.
+
+Do not invent a prior encounter as established history. If the game records earlier enemies, reuse actual state where possible; otherwise generate an explicitly separate damaged enemy.
+
+⸻
+
+7.3 The Salvage Room
+
+The player discovers a chamber full of disassembled industrial machinery and valuable components.
+
+A large salvage cache lies near an inactive defense system.
+
+Player options
+
+Take Everything
+
+* Gain 3–5 Scrap.
+* Activate a defensive encounter or trap.
+* Reward should justify the added risk.
+
+Take a Little
+
+* Gain 2 Scrap.
+* Chance of activating a minor hazard.
+* Lower risk than taking everything.
+
+Leave It Alone
+
+* Gain a safe 1 Scrap from accessible debris.
+* Avoid the defense encounter.
+
+Use a Builder Drone
+
+* Send the drone to sort or examine the cache.
+* Potentially identify a trap.
+* Increase salvage efficiency when successful.
+* Risk drone damage if the defense system activates.
+
+Use a Salvage Leech
+
+* Attach it to a dormant mechanical defense target when eligible.
+* It cannot produce extraction value without actual qualifying damage.
+* May create an advantage if combat begins.
+
+Reward rules
+
+Each cache must have a fixed reward budget determined at event generation.
+
+Do not permit repeatedly entering and leaving to regenerate its contents.
+
+⸻
+
+7.4 Circular Route
+
+The player follows a hallway and unexpectedly arrives at the same entrance again.
+
+The room resembles the previously cleared location.
+
+Sequence
+
+1. Show a recognizable duplicate environment.
+2. Preserve the player’s perception of familiar room features.
+3. Reveal a damaged enemy or anomaly associated with the room.
+4. Defeating or resolving that obstacle ends the loop.
+
+Player options
+
+Fight the Apparition
+
+* Defeat the returned enemy.
+* Gain a small additional reward.
+
+Inspect the Environment
+
+* Identify the inconsistency.
+* Reveal a shortcut or weaken the anomaly.
+
+Mark the Entrance
+
+* Record a spatial reference.
+* Reduce the cost or risk of breaking the loop.
+
+Use a Builder Drone
+
+* Ask it to investigate familiar maintenance features.
+* Potentially reveal a hidden exit.
+
+Use a Leech
+
+* Attach to the returning mechanical enemy.
+* Extract resources normally within encounter limits.
+
+Continuity rule
+
+If this event references a previously defeated enemy, preserve recognizable damage and missing components.
+
+However, do not revive a unique narrative character or canonically killed entity without explicit permission from the game’s established rules.
+
+The returned enemy may instead be a simulation, duplicate, automated shell, or anomaly.
+
+Its exact nature remains OPEN.
+
+⸻
+
+8. Special combined event — The Hallway That Eats Machines
+
+Trigger requirements:
+
+* Wrong Hallway is active.
+* An allied Builder Drone is available.
+* The player possesses a usable Salvage Leech or compatible variant.
+* The special event has not already occurred during the current anomaly.
+
+This event enters the rare Wrong Hallway pool only when its requirements are satisfied.
+
+Scene
+
+The Builder Drone detects a maintenance signal behind a false wall.
+
+Inside is a cavity full of dismantled construction machines.
+
+Several are still operating.
+
+Others are covered in dormant salvage parasites.
+
+The allied Builder Drone attempts to communicate with the abandoned machinery.
+
+Option A — Harvest the Machines
+
+* Gain 4 Scrap.
+* Disturb dormant parasites.
+* Trigger a short encounter against salvaging machines or an infested defense unit.
+* The player can use Leech abilities during the fight.
+
+Option B — Reactivate the Machinery
+
+* Spend 2 Scrap or an equivalent repair resource.
+* Activate one temporary friendly Builder Drone.
+* The new ally lasts for the remainder of the anomaly encounter.
+* There is a chance of awakening one damaged hostile machine.
+
+Option C — Extract the Parasites
+
+* Attempt to recover a usable Leech.
+* Success grants a temporary Leech card or refreshes one exhausted instance.
+* Failure may cause a parasite to attach to allied machinery.
+
+The temporary reward must expire at the appropriate encounter boundary.
+
+Option D — Seal the Cavity
+
+* Spend 1 Energy or use a compatible engineering action.
+* Prevent the dormant machinery from activating.
+* Gain a modest safe salvage reward.
+* Preserve the allied Builder Drone.
+
+Option E — Retreat
+
+* Abandon special rewards.
+* Return to the primary hallway decision.
+* Do not create another special event roll.
+
+Additional possible reactions
+
+* A Possessed Builder might automatically attempt to awaken the dormant machines.
+* A Scavenger Drone may identify the richest salvage pile.
+* A Symbiotic Leech might react to a large maintenance signal.
+* A Queen Salvager might provoke a hostile infestation response.
+* A Fully Awake Drone can permit a controlled investigation choice.
+
+These are encounter-specific interactions, not new global card powers.
+
+⸻
+
+9. Remaining card roster
+
+Implement all nine other previously proposed cards.
+
+9.1 Emergency Bulkhead
+
+Type: Structure
+Cost: 2 Scrap
+HP: 6
+
+Deploy a temporary protective bulkhead.
+
+Effects
+
+* Blocks attacks aimed at an allied card directly behind it, subject to existing line-of-sight rules.
+* Can be damaged and destroyed.
+* Does not block attacks that explicitly ignore cover.
+
+Active ability — Emergency Collapse
+
+The player may deliberately destroy the bulkhead.
+
+* Prevent 2 damage to every allied unit in its protected lane for the current resolution window.
+* Cannot be activated after damage has already finished resolving.
+* Must show the bulkhead collapsing or sealing shut.
+
+Interactions
+
+* Builder Drone can repair the bulkhead if valid.
+* Salvage Leech cannot normally attach to friendly structures.
+* Maintenance Foam can temporarily protect the bulkhead.
+* Explosive area attacks use existing cover rules.
+
+⸻
+
+9.2 Threat Beacon
+
+Type: Dangerous Utility
+HP: 5
+
+Deployment
+
+* Immediately gain 4 Scrap.
+* Increase Threat substantially; proposed baseline is +2 Threat units if the system uses discrete levels.
+* Deploy a hostile-attracting Beacon.
+
+Effects
+
+* Eligible enemies prioritize attacking the Beacon.
+* Enemies do not ignore unreachable or invalid targets.
+* Area attacks can still affect nearby allies.
+* The Beacon cannot repeatedly generate Scrap from repair, redeployment, or recovery of the same instance.
+
+Possibilities
+
+* A Builder Drone can repair it.
+* Enemy salvage machines may attempt to dismantle it.
+* Enemy sensors may detect the Beacon immediately.
+* Beacon destruction produces a distinct warning and animation.
+
+If Threat is continuous rather than discrete, convert the +2 value to a configurable equivalent.
+
+⸻
+
+9.3 Captured Servo Limb
+
+Type: Equipment
+Target: Character
+
+Effects
+
+* The first melee attack made each turn receives +2 damage.
+* At high Madness, the limb may produce an additional involuntary swing.
+
+Proposed malfunction rules
+
+* High Madness threshold: 5 on an assumed 0–10 scale.
+* Malfunction chance: 20% after the empowered attack.
+* Choose a random valid nearby target, potentially including an ally if friendly fire is supported.
+* Do not generate another malfunction from the extra swing.
+
+Options
+
+* Unequip the limb outside the active attack sequence.
+* Use existing stabilizing abilities to lower Madness.
+* Retain the limb for additional damage despite the risk.
+
+If the game uses a different Madness range, scale thresholds accordingly.
+
+⸻
+
+9.4 Cold Reactor Cell
+
+Type: Rare Resource / Equipment
+Charges: 3
+
+Effect
+
+Spend one Charge instead of 1 Energy when activating an eligible Tech ability.
+
+The Cell cannot pay multiple Energy unless an ability explicitly permits multiple Charge spending.
+
+Empty-cell outcomes
+
+When its final Charge is consumed, roll one discharge outcome:
+
+* 60%: Safe discharge.
+* 25%: Recover 1 Scrap.
+* 15%: Reactor burst dealing 2 damage to nearby eligible units.
+
+These values are proposed tuning defaults.
+
+Interactions
+
+* Does not refill automatically through ordinary repair.
+* Cannot be duplicated through salvage triggers.
+* Reactor burst uses existing area-damage rules.
+* Provide a clear warning before the final Charge is spent.
+
+⸻
+
+9.5 Machine Possum
+
+Type: Machine Ally
+HP: 3
+Attack: 0
+Proposed cost: 1 Scrap
+
+Behavior — Play Dead
+
+When directly attacked:
+
+1. Resolve the first incoming hit.
+2. If still alive, enter shutdown mode.
+3. Become unavailable as a direct attack target for the rest of that turn.
+
+Area damage still applies according to normal rules.
+
+Salvage behavior
+
+When an enemy dies while the Possum is active:
+
+* Wake up if shut down.
+* Collect 1 Scrap worth of salvage from the corpse.
+* Store it as pending room rewards.
+* Maximum 3 bonus Scrap per encounter.
+
+Restrictions
+
+* Cannot harvest the same corpse more than once.
+* If destroyed before reward collection, unrecovered carried salvage follows normal dropped-item rules.
+* Does not steal already allocated unique quest loot.
+
+Personality
+
+Give it a distinctive fake-shutdown pose, twitching limbs, and frantic scavenging animations.
+
+⸻
+
+9.6 Floor-Crawler Gun Nest
+
+Type: Deployable Tech
+HP: 5
+Attack: 2
+Proposed cost: 2 Scrap
+
+Autonomous behavior
+
+* Select nearest eligible enemy.
+* Move one valid position toward it per turn.
+* Attack when in range.
+* Do not voluntarily retreat.
+* Recalculate target if its current target dies.
+
+Clamp behavior
+
+When it reaches an eligible enemy:
+
+* Clamp onto that target or adjacent valid contact position.
+* Increase damage against that target by 2.
+* Remain attached until target destruction, removal, or Gun Nest destruction.
+
+If the movement system does not permit shared occupancy, represent the clamp as an attachment status rather than placing both units in one tile.
+
+Special interactions
+
+* Builder Drone can repair the Gun Nest.
+* Enemies may attempt to shake it loose.
+* Leech can coexist with the clamp if attachment rules allow distinct slots.
+* Gun Nest must not attack twice simply because clamping occurs during its movement phase.
+
+⸻
+
+9.7 Red-Mouth Ammunition
+
+Type: Nightmare Equipment / Consumable
+
+Effect
+
+* Add +3 damage to a firearm attack.
+* Gain 1 Madness for each use.
+* Consume one ammunition use according to existing equipment rules.
+
+High-Madness malfunction
+
+At high Madness, a shot may fire before the player finalizes the target.
+
+Proposed chance: 20%.
+
+Target selection
+
+* Use valid weapon-range targets.
+* Prefer the player’s initially highlighted target when malfunction is not triggered.
+* During malfunction, choose randomly among eligible targets.
+* Friendly-fire risk applies only if compatible with existing combat rules.
+
+The ammunition should visibly show metallic tooth-like seams, abnormal heat, or a brief recoil disturbance.
+
+Provide a warning before a dangerous automatic discharge.
+
+⸻
+
+9.8 Maintenance Foam
+
+Type: Utility
+Cost: 1 Energy
+
+Friendly use
+
+Cover one eligible friendly card with foam.
+
+For one turn:
+
+* It cannot act.
+* It cannot be directly targeted.
+* At effect expiration, restore 2 HP.
+* Area hazards follow existing environmental damage rules.
+
+Enemy use
+
+Attempt to disable an eligible enemy for one turn.
+
+Proposed resistance:
+
+* Ordinary enemies: no resistance unless specified by their traits.
+* Heavy enemies: 50% resistance.
+* Bosses: 75% resistance, or complete immunity only when explicitly tagged.
+
+Restrictions
+
+* Cannot permanently lock enemies.
+* Applying foam repeatedly must consume resources.
+* Cannot heal destroyed cards.
+* Existing foam removal and duration rules take precedence.
+
+Presentation
+
+Show the target encased in expanding industrial foam, followed by cracking, shedding, or dissolution when the effect expires.
+
+⸻
+
+9.9 Dead Pilot’s Reflex
+
+Type: Nightmare Reaction
+
+Trigger
+
+An allied machine is destroyed.
+
+Effect
+
+* Jubey immediately performs one attack based on the destroyed machine’s printed basic attack damage.
+* Gain 1 Madness.
+* Resolve as a reaction, not a new full turn.
+
+Restrictions
+
+* Once per turn.
+* Requires a valid target.
+* Does not copy special abilities, salvage effects, or recursive death triggers.
+* Cannot trigger from a destroyed temporary effect that lacks a printed attack.
+* Does not retroactively prevent the ally’s destruction.
+
+Presentation
+
+Briefly display an involuntary movement or combat reflex echoing the lost machine.
+
+Do not imply that this represents a new canon ability without further story approval.
+
+⸻
+
+10. Cross-card synergy and special cases
+
+Implement meaningful but bounded interactions.
+
+Combination	Interaction
+Builder Drone + Emergency Bulkhead	Drone repairs damaged cover
+Builder Drone + Threat Beacon	Drone keeps the decoy functional
+Builder Drone + Gun Nest	Drone repairs the deployed weapon
+Builder Drone + Symbiotic Leech	Successful repairs generate bonus Scrap
+Builder Drone + Maintenance Foam	Drone can repair eligible targets after foam expires
+Builder Drone + Wrong Hallway	Unlocks scouting and maintenance choices
+Salvage Leech + Gun Nest	Gun Nest damage contributes toward extraction
+Salvage Leech + damaged heavy enemy	Creates a salvage opportunity but provokes removal attempts
+Queen Salvager + multiple enemies	Can transfer pressure through limited offspring deployment
+Machine Possum + Salvage Leech	Possum collects corpse salvage while Leech rewards qualifying damage
+Threat Beacon + Wrong Hallway	Extra enemies may target the Beacon if it remains deployed
+Cold Reactor Cell + Wrong Hallway	Can substitute eligible Energy spending when applicable
+Dead Pilot’s Reflex + destroyed Builder Drone	Jubey can perform the drone’s printed 1-damage attack
+Red-Mouth Ammunition + Captured Servo Limb	Supports a high-risk Madness build without allowing both effects to enhance the same nonmatching attack
+Maintenance Foam + damaged allied machine	Temporarily protects and heals the machine
+
+Interaction safeguards
+
+Do not introduce hidden special effects simply because two card names appear together.
+
+Each synergy should resolve through ordinary card rules unless explicitly authored as a special encounter.
+
+Display contextual combat logs, such as:
+
+* “Builder Drone repaired Gun Nest: +2 HP”
+* “Symbiotic Leech harvested maintenance scrap: +1”
+* “Salvage Leech stripped armor: -1”
+* “Threat Beacon attracted enemy targeting”
+* “Wrong Hallway: additional encounter unlocked”
+
+⸻
+
+11. New encounter and AI behaviors
+
+Introduce reusable enemy behavior tags:
+
+* mechanical
+* repair_capable
+* salvage_sensitive
+* leech_purge
+* defensive
+* aggressive
+* neutral_maintenance
+* heavy_machine
+* anomaly_eligible
+
+Use compatibility adapters if equivalent tags already exist.
+
+Enemy decisions
+
+Mechanical enemies should evaluate:
+
+1. Immediate lethal threats.
+2. Available attacks.
+3. Attached parasites.
+4. Damaged components.
+5. Repair opportunities.
+6. Environmental targets.
+7. Threat Beacon distraction.
+8. Escape or defensive behavior.
+
+Do not have every enemy react to the Leech.
+
+Some should ignore it.
+
+Others should panic, attempt removal, or seek repairs.
+
+This distinction is important for enemy variety.
+
+Environmental reactions
+
+Allow room machinery to react to:
+
+* Repair attempts.
+* Attacking neutral machines.
+* Repeated salvage collection.
+* Reactivated maintenance systems.
+* Defensive alarms.
+* Destroyed structures.
+* Anomalous navigation effects.
+
+Whenever a reaction will substantially increase danger, provide an observable warning or a clearly risky player choice.
+
+⸻
+
+12. UX requirements
+
+Card readability
+
+Each card should clearly show:
+
+* Cost.
+* HP and damage, where applicable.
+* Activation timing.
+* Remaining charges or extraction limits.
+* Current target.
+* Relevant Madness or Threat risks.
+* Upgrade identity.
+
+Avoid hiding important rules in flavor text.
+
+Field feedback
+
+* Builder Drone: repairing, gathering, confused, following wreckage.
+* Salvage Leech: attached, extracting, stripping armor, being purged.
+* Gun Nest: moving, aiming, clamping.
+* Threat Beacon: broadcasting and attracting enemies.
+* Machine Possum: playing dead and collecting salvage.
+* Wrong Hallway: exit inconsistency, event warning, decision screen.
+
+Wrong Hallway interface
+
+Display:
+
+* Current anomaly title.
+* Brief environmental description.
+* Available choices.
+* Costs and risks.
+* Known rewards.
+* Whether a Builder Drone option is available.
+* Whether the player has already searched or marked the corridor.
+
+Unknown outcomes should remain concealed unless revealed by scanning or scouting.
+
+⸻
+
+13. Balance and exploit prevention
+
+Scrap economy
+
+Apply per-encounter limits where specified.
+
+Important caps:
+
+* Base Salvage Leech: 3 extractions per attachment.
+* Symbiotic Leech: 2 bonus Scrap per encounter.
+* Machine Possum: 3 bonus Scrap per encounter.
+* Queen Salvager: 1 temporary offspring per attachment.
+* Wrong Hallway: one additional extension encounter per room.
+
+The Builder Drone’s repeated Scrap generation must remain constrained by its action interval, survivability, and ordinary encounter length.
+
+Combat difficulty
+
+Extra salvage should usually require at least one of:
+
+* Additional danger.
+* Energy expenditure.
+* Turn expenditure.
+* Equipment vulnerability.
+* Increased Threat.
+* A difficult navigation choice.
+
+Randomness
+
+Use deterministic seeded rolls.
+
+Roll results should be associated with the triggering action, not recalculated every render frame.
+
+Avoid changing previously determined outcomes when the player opens and closes an event screen.
+
+Encounter protection
+
+* Prevent recursive Wrong Hallway events.
+* Prevent infinite repair/extraction loops.
+* Prevent repeatedly claiming a cache.
+* Prevent unlimited temporary card creation.
+* Prevent unavailable targets from receiving automatic attacks.
+* Prevent disappearance of the only exit.
+* Permit safe recovery from interrupted exploration events.
+
+⸻
+
+14. Testing scenarios
+
+Create specific validation cases rather than relying only on random playtesting.
+
+Builder Drone
+
+1. Only repair target exists.
+2. No damaged allies exist.
+3. Both repair and salvage are possible.
+4. Emergency Repair occurs before normal maintenance.
+5. Drone is destroyed immediately before its maintenance turn.
+6. Overworked Drone damages itself after its third action.
+7. Possessed Builder mistakenly repairs enemy Tech.
+8. Fully Awake Drone permits manual choice.
+9. A destroyed ally causes appropriate wreckage behavior.
+10. Drone performs Wrong Hallway reconnaissance.
+
+Salvage Leech
+
+1. Host receives less than 3 damage in a turn.
+2. Host receives exactly 3 damage.
+3. Multiple hits collectively exceed 3 damage.
+4. Host dies during its second extraction.
+5. Armor reduction applies once.
+6. Host purges the parasite.
+7. Parasite is recovered by a Builder Drone.
+8. Risky Extraction destroys the deployed parasite.
+9. Symbiotic Leech ignores zero-value repairs.
+10. Queen Salvager creates only one offspring.
+
+Wrong Hallway
+
+1. An ordinary room triggers the anomaly.
+2. Player forces exit.
+3. Player lacks Energy to force exit.
+4. Player searches walls.
+5. Player follows noise.
+6. Player scouts using Builder Drone.
+7. Drone becomes separated and is recovered.
+8. Maintenance Shift resolves peacefully.
+9. Maintenance Shift becomes hostile.
+10. Salvage Room reward is taken fully.
+11. Salvage Room reward is declined.
+12. Something Behind You triggers surprise.
+13. Circular Route references a previous ordinary enemy.
+14. Special combined event appears when requirements are met.
+15. Wrong Hallway never recursively activates itself.
+
+Other cards
+
+Verify:
+
+* Bulkhead intercept and collapse timing.
+* Threat Beacon target prioritization.
+* Servo Limb high-Madness malfunction.
+* Cold Reactor Cell empty-charge results.
+* Machine Possum direct-target shutdown.
+* Gun Nest movement and clamp behavior.
+* Red-Mouth automatic fire.
+* Maintenance Foam expiration.
+* Dead Pilot’s Reflex trigger limits.
+
+⸻
+
+15. Implementation order
+
+Pass 1 — Core functionality
+
+Implement:
+
+* Half-Awake Builder Drone.
+* Salvage Leech.
+* Wrong Hallway trigger.
+* All nine remaining base cards.
+* Shared status effects and combat triggers.
+* Basic animations and combat logs.
+
+All base cards should be functionally playable before expanding rare behavior.
+
+Pass 2 — Variants and autonomous behavior
+
+Implement:
+
+* All four Builder Drone upgrades.
+* All three Leech variants.
+* Enemy parasite-removal behavior.
+* Builder Drone wreckage reactions.
+* Gun Nest clamp behavior.
+* Special malfunction behaviors.
+
+Pass 3 — Full Wrong Hallway encounters
+
+Implement:
+
+* Maintenance Shift.
+* Something Behind You.
+* Salvage Room.
+* Circular Route.
+* All five main navigation choices.
+* Associated hazards, loot, and alternate resolutions.
+
+Pass 4 — Combined events and polish
+
+Implement:
+
+* The Hallway That Eats Machines.
+* Drone Remembers event.
+* Special equipment and attachment interactions.
+* Encounter-specific dialogue.
+* Environmental animations.
+* AI reactions and threat cues.
+
+Pass 5 — Balance and validation
+
+Run seeded tests covering:
+
+* Scrap generation.
+* Ally survivability.
+* Encounter completion.
+* Event repetition.
+* Enemy counterplay.
+* High-Madness malfunctions.
+* Resource costs.
+* Missing target edge cases.
+* Mid-event save/reload consistency, if the game supports saving.
+
+Use actual test outcomes to adjust numerical values.
+
+⸻
+
+16. Acceptance criteria
+
+This expansion is ready for an initial playable test when:
+
+1. All 12 base cards have working effects.
+2. All seven named upgrade/variant paths are functional.
+3. Builder Drone autonomously repairs or salvages.
+4. Salvage Leech extracts resources and responds correctly to host damage, death, and removal.
+5. Wrong Hallway can generate each of its four main events.
+6. Every listed main navigation option has a working outcome.
+7. The special combined event can trigger under its defined requirements.
+8. Each event has a valid completion or retreat path.
+9. Card effects cannot generate infinite resource loops.
+10. New abilities have useful visual and textual feedback.
+11. Existing deck, combat, and room progression remain intact.
+12. Automated or reproducible tests cover critical edge cases.
+
+OPEN / TUNE LATER
+
+The implementation should expose these values or decisions without silently declaring them canon:
+
+* Exact card costs where not previously specified.
+* Madness thresholds and malfunction chances.
+* Threat increase from deploying a Beacon.
+* Drone malfunction frequency.
+* Wrong Hallway event weights.
+* Salvage payout amounts.
+* Leech attachment compatibility and enemy immunities.
+* Whether any Leech variant can be permanently destroyed in harder modes.
+* How often the two special events appear.
+* Whether the returning enemy in Circular Route is a duplicate, simulation, or actual anomaly.
+* Whether additional card variants are separate collectible cards or permanent upgrades.
+* Final compatibility with the current Mechanica Descent ruleset.
+
+Final design target: Make the player feel that scavenged machinery is increasingly helpful, increasingly dangerous, and increasingly difficult to distinguish from the facility’s own hostile systems.
+
+The Builder Drone should be endearing and occasionally alarming. The Salvage Leech should make damaged enemies economically valuable without trivializing combat. Wrong Hallway should turn an ordinary successful encounter into a memorable new decision.
+
+Together, these systems should support an entire salvage-oriented playstyle while enriching the atmosphere of Mechanica Descent.

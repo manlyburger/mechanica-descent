@@ -17,8 +17,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install --legacy-peer-deps
-      - run: npx vite build
+      - run: npm ci --legacy-peer-deps
+      - run: npm test
+      - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

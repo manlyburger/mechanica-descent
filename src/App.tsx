@@ -1,128 +1,253 @@
-import { useEffect, useMemo, useReducer } from "react";
-import { ENERGY_UP, HP_UP, depthFor, label } from "./game/data";
+import { useEffect, useReducer, useState } from "react";
+import { CARDS, ENERGY_UP, HP_UP, RULES, VARIANTS, cardName, cardText, depthFor, label, type CardId, type UnitKind } from "./game/data";
 import {
+  SAVE_VERSION,
+  canPlay,
+  commandsFor,
   createGame,
-  installQa,
+  ejectedCommand,
+  enemyHitChance,
+  eventView,
+  jubey,
+  leg,
+  living,
   reduce,
+  riskyOdds,
+  rotCards,
+  validTargets,
+  whyNot,
+  installQa,
   type Action,
+  type CardInst,
+  type Command,
   type GameState,
   type Unit,
 } from "./game/engine";
 import "./App.css";
 
-const KEY = "mechanica-descent-v1";
+const KEY = "mechanica-descent-v4";
+type Dispatch = (a: Action) => void;
+const newSeed = () => (Date.now() % 99991) + 1;
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+const SHORT: Record<UnitKind, string> = {
+  jubey: "Jubey", light: "Light", lvl2: "Level 2", infested: "Infested", scared: "Scared", drone: "Drone", zombie: "Zombie",
+  rifleman: "Rifle", powered: "P. Armor", patient: "Patient", robobuddy: "Buddy", builder: "Builder", possum: "Possum", gunnest: "Nest",
+  bulkhead: "Bulkhead", beacon: "Beacon", shepherd: "Shepherd", walker: "Walker", jack: "Panic Jack", warframe: "Warframe",
+};
 
 function load(): GameState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as GameState;
+    if (raw) {
+      const s = JSON.parse(raw) as GameState;
+      if (s && s.v === SAVE_VERSION && Array.isArray(s.deck) && Array.isArray(s.wrecks)) return s;
+    }
   } catch {
-    /* ignore */
+    /* storage unavailable or save unreadable: start clean */
   }
-  return createGame(Date.now() % 99991);
+  return createGame(newSeed());
 }
 
 function App() {
   const [state, dispatch] = useReducer(reduce, undefined, load);
+  const [help, setHelp] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch {
+      /* ignore */
+    }
+  }, [state]);
+  useEffect(() => {
+    if (import.meta.env.DEV || location.search.includes("qa")) installQa(dispatch, () => state);
   }, [state]);
 
-  useEffect(() => {
-    installQa(dispatch, () => state);
-  }, [state]);
+  const j = jubey(state);
+  const inRun = state.phase !== "title";
+  const stain = Math.min(3, Math.floor(state.contamination / RULES.contamPerRot));
 
   return (
-    <div className="shell">
+    <div className={`shell ${state.phase === "player" ? "fighting" : ""} stain-${stain}`}>
       <header className="top">
-        <div>
-          <div className="brand">MECHANICA</div>
-          <div className="sub">DESCENT</div>
+        <div className="titlebar">
+          <div>
+            <span className="brand">MECHANICA</span> <span className="sub">DESCENT</span>
+          </div>
+          <button className="help" onClick={() => setHelp(!help)} aria-expanded={help}>
+            {help ? "close" : "rules"}
+          </button>
         </div>
-        <div className="res">
-          <Chip k="Room" v={String(state.room || "—")} />
-          <Chip k="HP" v={hpLine(state)} />
-          <Chip k="EN" v={`${state.energy}/${state.energyCap}${state.bonusEnergy ? `+${state.bonusEnergy}` : ""}`} />
-          <Chip k="Scrap" v={String(state.scrap)} />
-          <Chip k="RS" v={String(state.rs)} />
-          <Chip k="Threat" v={String(state.threat)} />
-          <Chip k="Mad" v={`${state.madness}%`} />
-          <Chip k="Nite" v={`${state.nightmare}/9`} />
-          <Chip k="RKT" v={rocketLine(state)} />
-        </div>
+        {inRun && (
+          <div className="res">
+            <Chip k="Room" v={String(state.room)} />
+            <Chip k="HP" v={`${j ? j.hp : 0}/${state.jubeyMax}`} hot={!!j && j.hp <= 2} />
+            <Chip k="Scrap" v={String(state.scrap)} />
+            <Chip k="RS" v={String(state.rs)} />
+            <Chip k="Cash" v={String(state.cash)} />
+            <Chip k="Threat" v={String(state.threat)} hot={state.threat >= RULES.threatPerDrone} />
+            <Chip k="Mad" v={String(state.madness)} hot={state.madness >= RULES.highMadness} />
+            <Chip k="Teeth" v={`${state.nightmare}/${RULES.nightmareThreshold}`} hot={state.nightmare >= RULES.nightmareThreshold - 2} />
+            <Chip k="Contam" v={String(state.contamination)} hot={rotCards(state) > 0} />
+          </div>
+        )}
+        {inRun && <Gear state={state} />}
+        {help && <Help />}
       </header>
 
-      {state.phase === "title" && <Title dispatch={dispatch} />}
+      {state.phase === "title" && <Title state={state} dispatch={dispatch} />}
+      {state.phase === "loadout" && <Loadout dispatch={dispatch} />}
       {state.phase === "route" && <Route state={state} dispatch={dispatch} />}
-      {state.phase === "choice" && <Choice state={state} dispatch={dispatch} />}
-      {(state.phase === "player" || state.phase === "resolving") && (
-        <Battle state={state} dispatch={dispatch} />
-      )}
+      {state.phase === "event" && <EventPanel state={state} dispatch={dispatch} />}
+      {state.phase === "player" && <Battle state={state} dispatch={dispatch} />}
+      {state.phase === "salvage" && <Salvage state={state} dispatch={dispatch} />}
+      {state.phase === "reward" && <Reward state={state} dispatch={dispatch} />}
+      {state.phase === "decon" && <Decon state={state} dispatch={dispatch} />}
       {state.phase === "tech" && <Tech state={state} dispatch={dispatch} />}
-      {state.phase === "win" && <End win dispatch={dispatch} />}
-      {state.phase === "dead" && <End win={false} dispatch={dispatch} />}
+      {(state.phase === "win" || state.phase === "dead") && <End state={state} dispatch={dispatch} />}
 
-      <Log lines={state.log} />
+      {inRun && <Log lines={state.log} />}
     </div>
   );
 }
 
-function hpLine(s: GameState) {
-  const j = s.units.find((u) => u.kind === "jubey");
-  return j ? `${j.hp}/${s.jubeyMax}` : `0/${s.jubeyMax}`;
-}
-function rocketLine(s: GameState) {
-  if (!s.ownsRocket) return `find ${Math.round(s.rocketFindChance * 100)}%`;
-  return `${s.rocketEquipped ? "EQ" : "BAG"} ×${s.rocketAmmo}`;
-}
-
-function Chip({ k, v }: { k: string; v: string }) {
+function Chip({ k, v, hot }: { k: string; v: string; hot?: boolean }) {
   return (
-    <span className="chip">
+    <span className={`chip ${hot ? "hot" : ""}`}>
       <em>{k}</em> {v}
     </span>
   );
 }
 
-function Title({ dispatch }: { dispatch: (a: Action) => void }) {
+/** Equipment, armed reactions and other standing effects. */
+function Gear({ state }: { state: GameState }) {
+  const g: string[] = [];
+  if (state.loadoutAd.length) g.push(`AM Mine ×${state.loadoutAd.length}${state.phase === "player" && state.minesArmed ? " armed" : ""}`);
+  if (state.equip.servo) g.push("Servo Limb");
+  if (state.equip.hand) g.push(`Override Hand${state.handUsed && state.phase === "player" ? " (used)" : ""}`);
+  if (state.equip.cell > 0) g.push(`Cell ${state.equip.cell}${state.equip.cell === 1 ? " LAST CHARGE" : ""}`);
+  for (const c of state.armed) g.push(`${CARDS[c.id].name} armed`);
+  if (state.redmouth) g.push(state.madness >= RULES.highMadness ? "RED-MOUTH UNSTABLE" : "Red-Mouth loaded");
+  if (state.navFlag) g.push("Corridor marked");
+  if (state.badge.turns > 0) g.push(`Badge ${state.badge.turns}`);
+  if (state.hallwayArmed) g.push("Exit is wrong");
+  if (state.preCommission) g.push("Warframe pre-commissioned");
+  if (!g.length) return null;
+  return (
+    <div className="gear">
+      {g.map((x) => (
+        <span key={x} className={/UNSTABLE|LAST/.test(x) ? "warn" : ""}>
+          {x}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Help() {
+  return (
+    <div className="helpbox">
+      <p>
+        <b>Cards.</b> Draw {RULES.handSize} a turn. Tap a card to read it, then tap its target (or tap it again). Gold number is
+        Energy; "S" is Scrap.
+      </p>
+      <p>
+        <b>Armor</b> (◈) takes 1 off every hit, so 1-damage hits do nothing. A Salvage Leech's second pull strips a point.
+      </p>
+      <p>
+        <b>Machines.</b> Tap any unit to inspect it and give orders. Allied machines act on their own after your turn, and stay
+        with you between rooms while they live.
+      </p>
+      <p>
+        <b>Threat</b> rises when you strip wrecks. Every {RULES.threatPerDrone} Threat calls a Drone into the next room. At{" "}
+        {RULES.threatHunt}+ the Infested hunt Jubey. Drains 1 per turn you leave wrecks alone.
+      </p>
+      <p>
+        <b>Madness.</b> Each point is a {pct(RULES.madnessMisfire)} misfire chance. At {RULES.highMadness}+ Nightmare gear acts
+        on its own. Drains 1 per turn.
+      </p>
+      <p>
+        <b>Teeth.</b> Infested kills and stripped wrecks fill it. At {RULES.nightmareThreshold}: no Block for{" "}
+        {RULES.teethStripTurns} turns.
+      </p>
+      <p>
+        <b>Contamination</b> comes from Infested hits and the deep halls. Every {RULES.contamPerRot} adds a dead card to each
+        fight. Only a Decon Bay clears it. There is one after every {RULES.deconEvery}th room: walk out, or go deeper.
+      </p>
+    </div>
+  );
+}
+
+function Title({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
   return (
     <section className="panel hero">
       <h1>Mechanica Descent</h1>
       <p className="hook">
-        White-and-ivory rig. Abandoned halls. Threat and Madness turn salvage into
-        danger. Decon Bay is the gold light at the bottom.
+        White-and-ivory rig. Abandoned halls. Threat and Madness turn salvage into danger. Decon Bay is the gold light at the
+        bottom. Then there is another bottom.
       </p>
-      <button className="btn gold" onClick={() => dispatch({ type: "start" })}>
+      <button className="btn gold" onClick={() => dispatch({ type: "start", seed: newSeed() })}>
         Descend
       </button>
-      <p className="muted">
-        Console QA: window.__descent — giveWeapon(), giveAmmo(n), giveScrap(n)
-      </p>
+      {state.best > 0 && <p className="muted">Deepest clean exit: room {state.best}.</p>}
     </section>
   );
 }
 
-function Route({ state, dispatch }: { state: GameState; dispatch: (a: Action) => void }) {
-  const d = depthFor(state.room);
-  const crazy = Math.round((0.01 + (state.room - 1) * 0.013) * 100);
-  const night = Math.round((0.03 + (state.room - 1) * 0.04) * 100);
+function Loadout({ dispatch }: { dispatch: Dispatch }) {
   return (
     <section className="panel">
-      <h2>Room {state.room} — pick a path</h2>
+      <h2>One thing to carry in</h2>
+      <p className="muted">The first two rooms are the hardest. Pick what gets you through them.</p>
+      <div className="col">
+        <button className="btn" onClick={() => dispatch({ type: "loadout", pick: "lootbox" })}>
+          Shabby Lootbox
+          <small>A random basic item card (a fuel canister to toss, a flare, foam…) and {RULES.lootboxScrap} Scrap.</small>
+        </button>
+        <button className="btn" onClick={() => dispatch({ type: "loadout", pick: "mine" })}>
+          AM Mine
+          <small>
+            Auto-deploys every fight. After turn 1, the first enemy machine to enter or advance takes {RULES.mineDamage}. One
+            use. You can carry {RULES.adSlots} auto-deploy cards.
+          </small>
+        </button>
+        <button className="btn" onClick={() => dispatch({ type: "loadout", pick: "buddy" })}>
+          Lil Robobuddy
+          <small>{RULES.buddyHp} HP. At the end of each fight it collects one wreck for you without raising Threat.</small>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function Route({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const d = depthFor(state.room);
+  const odds = riskyOdds(state.room);
+  const drones = Math.min(RULES.threatDroneMax, Math.floor(state.threat / RULES.threatPerDrone));
+  const toDecon = RULES.deconEvery - ((state.room - 1) % RULES.deconEvery);
+  const lights = d.alwaysLight + leg(state.room) * RULES.legExtraLight;
+  return (
+    <section className="panel">
+      <h2>Room {state.room}. Pick a path.</h2>
       <p className="muted">
-        Table: {d.alwaysLight} Light, extra Light {Math.round(d.extraLight * 100)}%, Infested{" "}
-        {Math.round(d.infested * 100)}%, Lvl2 {Math.round(d.lvl2 * 100)}%.
+        {state.revealNext
+          ? `You know what is in there: ${state.nextPack.map((k) => label(k)).join(", ") || "nothing"}.`
+          : `Expect ${lights} Light${lights > 1 ? "s" : ""}, extra Light ${pct(d.extraLight)}, Infested ${pct(d.infested)}${state.room >= 3 ? `, Level 2 ${pct(d.lvl2)}` : ""}.`}
+        {drones > 0 ? ` Threat ${state.threat}: ${drones} Drone${drones > 1 ? "s" : ""} will follow.` : ""}
+        {state.pendingSpawn.length ? ` Something from the last hall is waiting too.` : ""} Decon Bay in {toDecon} room
+        {toDecon > 1 ? "s" : ""}.
       </p>
-      <div className="row">
+      <div className="col">
         <button className="btn" onClick={() => dispatch({ type: "pickPath", risky: false })}>
           Normal hall
-          <small>Standard pack. No extra Crazy / Nightmare roll.</small>
+          <small>Standard pack. No extra pay.</small>
         </button>
         <button className="btn danger" onClick={() => dispatch({ type: "pickPath", risky: true })}>
           Risky red hall
           <small>
-            Crazy {crazy}% · Nightmare {night}%
+            Pays +{RULES.riskyClearScrap} Scrap and double RS odds. A Drone shadows you. Crazy {pct(odds.crazy)} · Nightmare{" "}
+            {pct(odds.nightmare)}
           </small>
         </button>
       </div>
@@ -130,180 +255,421 @@ function Route({ state, dispatch }: { state: GameState; dispatch: (a: Action) =>
   );
 }
 
-function Choice({ state, dispatch }: { state: GameState; dispatch: (a: Action) => void }) {
-  const [a, b] = state.choiceShown;
+function EventPanel({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const v = eventView(state);
+  if (!v) return null;
   return (
-    <section className="panel">
-      <h2>The hall offers something</h2>
-      <p className="hook">{state.lastHook}</p>
+    <section className="panel event">
+      <h2>{v.title}</h2>
+      {v.lines.map((l, i) => (
+        <p key={i} className="hook">
+          {l}
+        </p>
+      ))}
+      <p className="muted">Energy {state.energy}{state.equip.cell ? ` · Cell ${state.equip.cell}` : ""} · Scrap {state.scrap}</p>
       <div className="col">
-        {a && (
-          <button className="btn" onClick={() => dispatch({ type: "pickChoice", id: a.id })}>
-            {a.title}
-            <small>{a.blurb}</small>
+        {v.options.map((o) => (
+          <button key={o.id} className="btn" disabled={!o.enabled} onClick={() => dispatch({ type: "event", option: o.id })}>
+            {o.label}
+            <small>{o.detail}</small>
           </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------- battle ----------
+
+function planText(state: GameState, u: Unit): string {
+  const p = u.plan;
+  if (!p) return "";
+  const t = state.units.find((x) => x.uid === p.targetUid);
+  const at = t ? SHORT[t.kind] : "—";
+  if (p.type === "attack") return `${p.note ? p.note + ": " : ""}shot ${p.dmg} → ${at}`;
+  if (p.type === "missile") return `MISSILE ${p.dmg} → ${at}`;
+  if (p.type === "disabled") return u.foam ? "foamed" : (u.sealed ?? 0) > 0 ? `sealed ${u.sealed}` : "stunned";
+  return p.note ?? p.type;
+}
+
+function statusLines(state: GameState, u: Unit): string[] {
+  const s: string[] = [];
+  if (u.side === "enemy") {
+    s.push(planText(state, u));
+    if (u.missiles > 0) s.push(`lock ${u.lock}/2`);
+    if (u.note) s.push(u.note);
+  }
+  if (u.leech) s.push(`${u.leech.temp ? "offspring " : ""}leech ${u.leech.count}/${RULES.leechMax}`);
+  if (u.armor > 0) s.push(`armor ${u.armor}: −${u.armor} per hit`);
+  if (u.weak) s.push("exposed: takes +1");
+  if (u.burn) s.push(`burning ${u.burn}`);
+  if (u.side === "friendly") {
+    if (u.malf === "wrongRepair") s.push("MALFUNCTION: will repair an enemy");
+    if (u.malf === "uncontrolled") s.push("UNCONTROLLED");
+    if (u.malf === "hostile") s.push("HOSTILE STARTUP");
+    if (u.foam) s.push("foamed");
+    if ((u.sealed ?? 0) > 0) s.push(`sealed ${u.sealed}`);
+    if (u.kind === "builder") s.push(u.jammed ? "jammed" : (u.timer ?? 0) <= 1 ? "job due" : `job in ${u.timer}`);
+    if (u.order) s.push(`order: ${u.order}`);
+    if (u.kind === "warframe" && u.inert) s.push(`startup ${u.progress ?? 0}/${RULES.warframeNeed}${u.paused ? " paused" : ""}`);
+    if (u.kind === "shepherd") s.push(`hauling ${u.carried ?? 0}/${RULES.shepherdPair}${u.secured ? " secured" : ""}${u.feed ? " → frame" : ""}${u.hold ? " holding" : ""}`);
+    if (u.kind === "possum") s.push(u.shutdown ? "playing dead" : `takings ${u.carried ?? 0}`);
+    if (u.kind === "walker") s.push(u.elevated ? "overhead" : "on the floor");
+    if (u.kind === "jack") s.push(u.protect ? `guards ${SHORT[state.units.find((x) => x.uid === u.protect)?.kind ?? "jubey"]}${u.intercepted ? " (spent)" : ""}` : "no ward");
+    if (u.kind === "gunnest") s.push(u.clamp ? "clamped +2" : "crawling");
+    if (u.kind === "bulkhead") s.push(`covers ${SHORT[state.units.find((x) => x.uid === u.guards)?.kind ?? "jubey"]}`);
+    if (u.roomsLeft !== undefined) s.push(`${u.roomsLeft} fight${u.roomsLeft > 1 ? "s" : ""} left`);
+    if ((u.ward ?? 0) > 0) s.push(`prevents ${u.ward}`);
+    if (u.mood && s.length < 3) s.push(u.mood);
+  }
+  return s.filter(Boolean);
+}
+
+type Pending = { cmd: Command } | null;
+
+function Battle({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const [selUid, setSel] = useState<string | null>(null);
+  const [inspect, setInspect] = useState<string | null>(null);
+  const [pending, setPending] = useState<Pending>(null);
+  const sel = state.hand.find((c) => c.uid === selUid) ?? null;
+  const def = sel ? CARDS[sel.id] : null;
+  const targets = sel && canPlay(state, sel) ? validTargets(state, sel) : null;
+  const cmdTargets = pending?.cmd.targets ?? null;
+  const enemies = living(state, "enemy");
+  const friends = living(state, "friendly");
+  const recap = state.lastAction === "endTurn" ? state.events : [];
+  const inspected = state.units.find((u) => u.uid === inspect && u.hp > 0) ?? null;
+  const eject = ejectedCommand(state);
+
+  const clear = () => {
+    setSel(null);
+    setPending(null);
+    setInspect(null);
+  };
+  const play = (a: { targetId?: string; slot?: number }) => {
+    if (!sel) return;
+    dispatch({ type: "play", uid: sel.uid, ...a });
+    clear();
+  };
+  const tapUnit = (u: Unit) => {
+    if (pending && cmdTargets?.includes(u.uid)) {
+      dispatch({ type: "command", uid: pending.cmd.uid, cmd: pending.cmd.cmd, targetId: u.uid });
+      return clear();
+    }
+    if (sel && targets === "column" && u.side === "enemy") return play({ slot: u.slot });
+    if (sel && Array.isArray(targets) && targets.includes(u.uid)) return play({ targetId: u.uid });
+    setSel(null);
+    setPending(null);
+    setInspect(inspect === u.uid ? null : u.uid);
+  };
+  const tapEmpty = (slot: number) => {
+    if (sel && targets === "column") play({ slot });
+  };
+  const tapCard = (c: CardInst) => {
+    setInspect(null);
+    setPending(null);
+    if (selUid === c.uid && canPlay(state, c) && validTargets(state, c) === null) return play({});
+    setSel(selUid === c.uid ? null : c.uid);
+  };
+  const runCmd = (c: Command) => {
+    if (c.targets) {
+      setPending({ cmd: c });
+      setInspect(null);
+    } else {
+      dispatch({ type: "command", uid: c.uid, cmd: c.cmd });
+      clear();
+    }
+  };
+
+  const glow = (u: Unit) => (pending ? !!cmdTargets?.includes(u.uid) : !!sel && ((targets === "column" && u.side === "enemy") || (Array.isArray(targets) && targets.includes(u.uid))));
+  const no = sel ? whyNot(state, sel) : null;
+  const prompt = pending
+    ? `${pending.cmd.label}: tap a highlighted unit.`
+    : !sel
+      ? "Tap a card or a unit."
+      : no
+        ? `Can't play: ${no}.`
+        : targets === "column"
+          ? "Tap the centre column."
+          : Array.isArray(targets)
+            ? "Tap a highlighted unit."
+            : "Tap the card again to play.";
+
+  const lane = (side: Unit[], isEnemy: boolean) => (
+    <div className="lane">
+      {Array.from({ length: RULES.lanes }, (_, i) => {
+        const u = side.find((e) => e.slot === i);
+        if (!u) return <button key={i} className={`token empty ${isEnemy && sel && targets === "column" ? "target" : ""}`} onClick={() => tapEmpty(i)} aria-label="empty column" />;
+        return <Token key={u.uid} unit={u} state={state} target={glow(u)} open={inspect === u.uid} onClick={() => tapUnit(u)} />;
+      })}
+    </div>
+  );
+
+  return (
+    <section className="panel battle">
+      <div className="lane-label">
+        ENEMY LANE · aim {pct(enemyHitChance(state))}
+        {state.queue.length ? ` · ${state.queue.length} inbound` : ""}
+        {state.extension ? " · WRONG HALLWAY" : ""}
+      </div>
+      {lane(enemies, true)}
+      <div className="lane-label">FRIENDLY LANE</div>
+      {lane(friends, false)}
+
+      {(state.wrecks.length > 0 || state.ejected) && (
+        <div className="floor">
+          {state.wrecks.length > 0 && <span>Wreckage on the floor: {state.wrecks.length}</span>}
+          {eject && (
+            <button className="btn mini gold" disabled={!eject.enabled} onClick={() => dispatch({ type: "command", uid: "ejected", cmd: "retrieve" })}>
+              {eject.label}
+              <small>{eject.detail}</small>
+            </button>
+          )}
+        </div>
+      )}
+
+      {inspected && (
+        <div className="sheet">
+          <div className="sheet-head">
+            <b>
+              {label(inspected.kind)}
+              {inspected.variant ? ` (${VARIANTS.find((v) => v.id === inspected.variant)?.name})` : ""}
+              {inspected.crazy ? " [CRAZY]" : ""}
+            </b>
+            <span>
+              {inspected.hp}/{inspected.maxHp} HP{inspected.armor ? ` · ${inspected.armor} armor` : ""}{inspected.atk ? ` · ${inspected.atk} dmg` : ""}
+            </span>
+          </div>
+          {statusLines(state, inspected).map((l, i) => (
+            <div key={i} className="sheet-line">
+              {l}
+            </div>
+          ))}
+          {commandsFor(state, inspected).map((c) => (
+            <button key={c.cmd} className="btn mini" disabled={!c.enabled} onClick={() => runCmd(c)}>
+              {c.label}
+              <small>{c.detail}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {recap.length > 0 && !inspected && (
+        <div className="recap">
+          <div className="lane-label">LAST ROUND</div>
+          {recap.slice(0, 14).map((l, i) => (
+            <div key={i} style={{ animationDelay: `${i * 70}ms` }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="dock">
+        {sel && def && (
+          <div className="detail">
+            <b>{cardName(sel.id, sel.variant)}</b> <span className="cats">{def.cats.join(" · ")}</span>
+            <div>{cardText(sel.id, sel.variant)}{sel.rounds !== undefined ? ` (${sel.rounds} rounds left)` : ""}</div>
+          </div>
         )}
-        {b && (
-          <button className="btn" onClick={() => dispatch({ type: "pickChoice", id: b.id })}>
-            {b.title}
-            <small>{b.blurb}</small>
-          </button>
-        )}
-        <button className="btn ghost" onClick={() => dispatch({ type: "pickChoice", id: "NONE" })}>
-          Keep moving
-          <small>Leave it. The room stays what the path promised.</small>
+        <div className="dockbar">
+          <span className="pips">
+            EN {state.energy}
+            {state.block > 0 ? ` · BLOCK ${state.block}` : ""}
+            {state.stripped > 0 ? ` · STRIPPED ${state.stripped}` : ""}
+          </span>
+          <span className="aim">{prompt}</span>
+          <span className="piles">
+            deck {state.draw.length} · used {state.discard.length}
+          </span>
+        </div>
+        <div className="hand">
+          {state.hand.map((c) => (
+            <CardView key={c.uid} card={c} selected={c.uid === selUid} dim={!canPlay(state, c)} onClick={() => tapCard(c)} />
+          ))}
+          {state.hand.length === 0 && <div className="muted handempty">Hand empty.</div>}
+        </div>
+        <button
+          className="btn ghost endturn"
+          onClick={() => {
+            clear();
+            dispatch({ type: "endTurn" });
+          }}
+        >
+          End turn
         </button>
       </div>
     </section>
   );
 }
 
-function Battle({
-  state,
-  dispatch,
-}: {
-  state: GameState;
-  dispatch: (a: Action) => void;
-}) {
-  const enemies = useMemo(
-    () => state.units.filter((u) => u.side === "enemy").sort((a, b) => a.slot - b.slot),
-    [state.units]
-  );
-  const friends = useMemo(
-    () => state.units.filter((u) => u.side === "friendly").sort((a, b) => a.slot - b.slot),
-    [state.units]
-  );
-
-  const canRocket =
-    state.ownsRocket && state.rocketEquipped && state.rocketAmmo > 0 && !state.rocketUsed && state.energy >= 1;
-
+function CardView({ card, selected, dim, big, onClick, disabled }: { card: { id: CardId; variant?: string; rounds?: number }; selected?: boolean; dim?: boolean; big?: boolean; onClick?: () => void; disabled?: boolean }) {
+  const d = CARDS[card.id];
+  const cls = ["card", selected ? "sel" : "", dim ? "dim" : "", big ? "big" : "", d.cats.includes("Nightmare") ? "night" : "", d.deploys ? "machine" : "", d.exhaust || card.rounds !== undefined ? "ammo" : ""].join(" ");
   return (
-    <section className="panel battle">
-      <div className="lane-label">ENEMY LANE</div>
-      <div className="lane">
-        {Array.from({ length: 6 }).map((_, i) => {
-          const live = enemies.find((e) => e.slot === i && !e.wreck);
-          const dead = enemies.find((e) => e.slot === i && e.wreck);
-          const u = live ?? dead;
-          return <Token key={i} unit={u} onClick={() => onToken(dispatch, u)} />;
-        })}
-      </div>
-      <div className="lane-label">FRIENDLY LANE</div>
-      <div className="lane">
-        {Array.from({ length: 6 }).map((_, i) => {
-          const u = friends.find((e) => e.slot === i);
-          return <Token key={i} unit={u} self />;
-        })}
-      </div>
-
-      {state.phase === "player" && (
-        <div className="acts">
-          <button className="btn" disabled={state.gunUsed || state.energy < 1} onClick={() => hint("gun")}>
-            Machine gun 1–3
-            <small>1 EN · then tap enemy</small>
-          </button>
-          <button className="btn" disabled={state.craneUsed || state.energy < 1} onClick={() => hint("crane")}>
-            Crane Smash
-            <small>1 EN · then tap column</small>
-          </button>
-          <button className="btn gold" disabled={!canRocket} onClick={() => hint("rocket")}>
-            Rocket
-            <small>
-              {state.ownsRocket
-                ? state.rocketEquipped
-                  ? `${state.rocketAmmo} ammo · 4/2 + burn`
-                  : "stowed — equip at Tech"
-                : `not found (${Math.round(state.rocketFindChance * 100)}%)`}
-            </small>
-          </button>
-          <button className="btn ghost wide" onClick={() => dispatch({ type: "endTurn" })}>
-            End turn
-          </button>
-        </div>
-      )}
-      <div id="aim" className="aim" />
-    </section>
-  );
-}
-
-let pending: "gun" | "crane" | "rocket" | null = null;
-function hint(kind: typeof pending) {
-  pending = kind;
-  const el = document.getElementById("aim");
-  if (el) el.textContent = kind === "crane" ? "Tap an enemy column." : "Tap an enemy. Wrecks salvage.";
-}
-
-function onToken(dispatch: (a: Action) => void, u?: Unit) {
-  if (!u) return;
-  if (u.wreck) {
-    dispatch({ type: "salvage", targetId: u.uid });
-    pending = null;
-    return;
-  }
-  if (pending === "gun") dispatch({ type: "gun", targetId: u.uid });
-  else if (pending === "rocket") dispatch({ type: "rocket", targetId: u.uid });
-  else if (pending === "crane") dispatch({ type: "crane", slot: u.slot });
-  else dispatch({ type: "gun", targetId: u.uid });
-  pending = null;
-  const el = document.getElementById("aim");
-  if (el) el.textContent = "";
-}
-
-function Token({ unit, onClick, self }: { unit?: Unit; onClick?: () => void; self?: boolean }) {
-  if (!unit) return <div className="token empty" />;
-  const art =
-    unit.kind === "infested"
-      ? "./cards/nightmare.jpg"
-      : unit.kind === "zombie"
-        ? "./cards/zombie.jpg"
-        : unit.kind === "drone"
-          ? "./cards/drone.jpg"
-          : unit.kind === "rifleman"
-            ? "./cards/riflemen.jpg"
-            : undefined;
-  return (
-    <button
-      className={`token ${unit.wreck ? "wreck" : ""} ${unit.crazy ? "crazy" : ""} ${self ? "self" : ""}`}
-      onClick={onClick}
-      disabled={self}
-    >
-      {art && <img src={art} alt="" />}
-      <div className="tn">{unit.wreck ? "WRECK" : label(unit.kind)}</div>
-      <div className="th">
-        {unit.wreck ? "tap salvage" : `${unit.hp}/${unit.maxHp}`}
-        {unit.burn ? ` b${unit.burn}` : ""}
-        {unit.lock ? ` L${unit.lock}` : ""}
-      </div>
+    <button className={cls} onClick={onClick} disabled={disabled}>
+      <span className="costs">
+        {!d.unplayable && <span className="cost">{d.cost}</span>}
+        {d.scrap ? <span className="scrapcost">{d.scrap}S</span> : null}
+      </span>
+      <span className="cname">{cardName(card.id, card.variant)}</span>
+      <span className="ctext">{big ? cardText(card.id, card.variant) : d.cats[0]}</span>
     </button>
   );
 }
 
-function Tech({ state, dispatch }: { state: GameState; dispatch: (a: Action) => void }) {
+function Token({ unit, state, target, open, onClick }: { unit: Unit; state: GameState; target?: boolean; open?: boolean; onClick?: () => void }) {
+  const self = unit.side === "friendly";
+  const lines = statusLines(state, unit);
+  const alert = unit.plan?.type === "missile" || !!unit.malf;
+  const cls = ["token", unit.kind, self ? "self" : "", unit.crazy ? "crazy" : "", target ? "target" : "", open ? "open" : "", alert ? "missile" : "", unit.foam || (unit.sealed ?? 0) > 0 ? "muted-unit" : "", unit.elevated ? "elevated" : ""].join(" ");
+  return (
+    <button className={cls} onClick={onClick}>
+      <div className="tn">
+        {SHORT[unit.kind]}
+        {unit.crazy ? " ✱" : ""}
+        {unit.leech ? " ⛭" : ""}
+      </div>
+      <div className="th">
+        {unit.hp}/{unit.maxHp}
+        {unit.armor > 0 ? ` ◈${unit.armor}` : ""}
+        {unit.kind === "jubey" && state.block > 0 ? ` +${state.block}` : ""}
+        {unit.burn ? ` 🔥${unit.burn}` : ""}
+      </div>
+      <div className="ti">{lines[0] ?? ""}</div>
+    </button>
+  );
+}
+
+// ---------- between fights ----------
+
+function Salvage({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const nextDrones = Math.min(RULES.threatDroneMax, Math.floor((state.threat + 1) / RULES.threatPerDrone));
+  return (
+    <section className="panel">
+      <h2>The wrecks are still warm</h2>
+      <p className="muted">
+        Each strip: +{RULES.salvageScrap} Scrap, +{RULES.salvageThreat} Threat, +1 Teeth. One more takes Threat to {state.threat + 1}
+        {nextDrones > 0 ? ` (${nextDrones} Drone${nextDrones > 1 ? "s" : ""} next room)` : ""}.
+      </p>
+      <div className="col">
+        {state.wrecks.map((w) => (
+          <button key={w.id} className="btn" onClick={() => dispatch({ type: "salvage", targetId: w.id })}>
+            Strip {w.pile ? "the spilled cargo" : `the ${label(w.kind)}`}
+            <small>+{RULES.salvageScrap * w.value} Scrap</small>
+          </button>
+        ))}
+        <button className="btn gold" onClick={() => dispatch({ type: "leaveSalvage" })}>
+          Leave the rest
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function Reward({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  return (
+    <section className="panel">
+      <h2>Pulled from the room</h2>
+      <p className="muted">Add one card to the deck, or travel light.</p>
+      <div className="pickcol">
+        {state.rewardShown.map((id) => (
+          <CardView key={id} card={{ id }} big disabled={id === "MINE" && state.loadoutAd.length >= RULES.adSlots} onClick={() => dispatch({ type: "pickReward", id })} />
+        ))}
+      </div>
+      <button className="btn ghost" onClick={() => dispatch({ type: "pickReward", id: "NONE" })}>
+        Take nothing
+      </button>
+    </section>
+  );
+}
+
+function Decon({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const d = depthFor(state.room + 1);
+  return (
+    <section className="panel hero">
+      <h1>Decon Bay</h1>
+      <p className="hook">Gold light under the door. The scrubbers are running. You can walk out of here clean, with everything you carried. Or you can let it wash you and go back down.</p>
+      <div className="col">
+        <button className="btn gold" onClick={() => dispatch({ type: "decon", deeper: false })}>
+          Walk out
+          <small>End the run here. Room {state.room} goes on the record{state.best ? ` (best so far: ${state.best})` : ""}.</small>
+        </button>
+        <button className="btn danger" onClick={() => dispatch({ type: "decon", deeper: true })}>
+          Go deeper
+          <small>
+            Contamination {state.contamination} → 0, heal {RULES.deconHeal}. Next leg: +1 Light every room, Level 2 {pct(d.lvl2)}, and the
+            halls stain you as you go. Die down there and none of this counts.
+          </small>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function Tech({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const [showDeck, setShowDeck] = useState(false);
   const e = ENERGY_UP.find((x) => x.from === state.energyCap);
   const h = HP_UP.find((x) => x.rank === state.hpUpRank + 1);
+  const j = jubey(state);
+  const hurt = !!j && j.hp < state.jubeyMax;
+  const canCut = state.cash >= RULES.removeCardCash && state.deck.length > 5;
+  const upgradable = state.deck.filter((c) => !c.variant && VARIANTS.some((v) => v.card === c.id));
+  const squad = living(state, "friendly").filter((u) => u.kind !== "jubey");
   return (
     <section className="panel">
       <h2>Tech Stop</h2>
-      <p className="muted">Equip specials. Spend scrap. Then take the next hall.</p>
+      <p className="muted">
+        Spend what you carried out. Then take the next hall.
+        {squad.length ? ` With you: ${squad.map((u) => `${SHORT[u.kind]} ${u.hp}/${u.maxHp}`).join(", ")}.` : ""}
+      </p>
       <div className="col">
-        {state.ownsRocket ? (
-          <button className="btn gold" onClick={() => dispatch({ type: "equipRocket", on: !state.rocketEquipped })}>
-            {state.rocketEquipped ? "Stow rocket launcher" : "Equip rocket launcher (slot A)"}
-            <small>{state.rocketAmmo} ammo · 4 main / 2 splash · burn 1×2</small>
-          </button>
-        ) : (
-          <p className="muted">
-            Rocket frame not found. Current pity {Math.round(state.rocketFindChance * 100)}% (Lvl2 doubles the roll).
-          </p>
-        )}
-        <button className="btn" disabled={!e || state.scrap < (e?.scrap ?? 99) || state.rs < (e?.rs ?? 99)} onClick={() => dispatch({ type: "buyEnergy" })}>
+        <button className="btn" disabled={!e || state.scrap < e.scrap || state.rs < e.rs} onClick={() => dispatch({ type: "buyEnergy" })}>
           Energy {state.energyCap} → {e ? e.to : "MAX"}
-          <small>{e ? `${e.scrap} scrap + ${e.rs} RS` : "capped"}</small>
+          <small>{e ? `${e.scrap} Scrap${e.rs ? ` + ${e.rs} RS` : ""}` : "capped"}</small>
         </button>
-        <button className="btn" disabled={!h || state.scrap < (h?.scrap ?? 99)} onClick={() => dispatch({ type: "buyHp" })}>
+        <button className="btn" disabled={!h || state.scrap < h.scrap} onClick={() => dispatch({ type: "buyHp" })}>
           +1 Max HP
-          <small>{h ? `${h.scrap} scrap · also heal 1` : "capped"}</small>
+          <small>{h ? `${h.scrap} Scrap · also heals 1` : "capped"}</small>
         </button>
+        <button className="btn" disabled={!hurt || state.scrap < RULES.patchScrap} onClick={() => dispatch({ type: "patch" })}>
+          Patch the hull
+          <small>{RULES.patchScrap} Scrap · heal 1</small>
+        </button>
+        <button className="btn" disabled={!hurt || state.cash < RULES.repairCash} onClick={() => dispatch({ type: "repair" })}>
+          Pay for a proper repair
+          <small>
+            {RULES.repairCash} Cash · heal {RULES.repairHeal}
+          </small>
+        </button>
+        {upgradable.map((c) => (
+          <div key={c.uid} className="offer">
+            <div className="lane-label">REBUILD {CARDS[c.id].name.toUpperCase()} · {RULES.variantScrap} SCRAP · PERMANENT</div>
+            {VARIANTS.filter((v) => v.card === c.id).map((v) => (
+              <button key={v.id} className="btn mini" disabled={state.scrap < RULES.variantScrap} onClick={() => dispatch({ type: "specialize", uid: c.uid, variant: v.id })}>
+                {v.name}
+                <small>{v.text}</small>
+              </button>
+            ))}
+          </div>
+        ))}
+        {state.equip.servo && (
+          <button className="btn" onClick={() => dispatch({ type: "unequip", what: "servo" })}>
+            Unbolt the Servo Limb
+            <small>Back into the deck as a card.</small>
+          </button>
+        )}
+        <button className="btn ghost" onClick={() => setShowDeck(!showDeck)}>
+          {showDeck ? "Hide deck" : `View deck (${state.deck.length})`}
+          <small>Tap a card to cut it for {RULES.removeCardCash} Cash.</small>
+        </button>
+        {showDeck && (
+          <div className="pickcol">
+            {state.deck.map((c) => (
+              <CardView key={c.uid} card={c} big disabled={!canCut} onClick={() => dispatch({ type: "removeCard", uid: c.uid })} />
+            ))}
+          </div>
+        )}
         <button className="btn gold" onClick={() => dispatch({ type: "nextRoom" })}>
           Next hall
         </button>
@@ -312,16 +678,22 @@ function Tech({ state, dispatch }: { state: GameState; dispatch: (a: Action) => 
   );
 }
 
-function End({ win, dispatch }: { win: boolean; dispatch: (a: Action) => void }) {
+function End({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
+  const win = state.phase === "win";
   return (
     <section className="panel hero">
-      <h1>{win ? "Decon Bay" : "Still"}</h1>
+      <h1>{win ? "Clean" : "Still"}</h1>
       <p className="hook">
         {win
-          ? "Gold cleansing light. The ivory comes clean. First slice complete."
-          : "The hall keeps the rig. Threat did what it does."}
+          ? `Gold cleansing light. The ivory comes clean. You walked out from room ${state.room}.`
+          : `The hall keeps the rig. Room ${state.room}. Nothing you carried counts.`}
       </p>
-      <button className="btn gold" onClick={() => dispatch({ type: "start", seed: Date.now() % 99991 })}>
+      <p className="muted">
+        {state.tally.kills} kills · {state.tally.cards} cards played · {state.tally.salvaged} wrecks stripped · {state.tally.decons} Decon
+        {state.tally.decons === 1 ? "" : "s"} · seed {state.seed}
+        {state.best ? ` · deepest clean exit: room ${state.best}` : ""}
+      </p>
+      <button className="btn gold" onClick={() => dispatch({ type: "start", seed: newSeed() })}>
         Descend again
       </button>
     </section>
@@ -331,7 +703,7 @@ function End({ win, dispatch }: { win: boolean; dispatch: (a: Action) => void })
 function Log({ lines }: { lines: string[] }) {
   return (
     <aside className="log">
-      {lines.slice(0, 12).map((l, i) => (
+      {lines.slice(0, 16).map((l, i) => (
         <div key={i}>{l}</div>
       ))}
     </aside>

@@ -1,726 +1,835 @@
+// Pure, deterministic game engine. No DOM, no React, no Math.random.
+// reduce(state, action) -> new state. Same seed + same actions = same run.
+
 import {
-  CHOICES,
-  type ChoiceId,
-  DEPTH,
+  CARDS,
   ENERGY_UP,
   HP_UP,
+  LOOTBOX_POOL,
+  RARITY_WEIGHT,
+  REWARD_POOL,
   RULES,
-  type Phase,
-  type Side,
-  type UnitKind,
-  type ChoiceDef,
+  STARTING_DECK,
+  VARIANTS,
+  cardName,
   depthFor,
   label,
+  type CardId,
+  type UnitKind,
 } from "./data";
+import {
+  addCard,
+  addContamination,
+  addNightmare,
+  addScrap,
+  allies,
+  allyAct,
+  chance,
+  deal,
+  drawCards,
+  enemyAct,
+  freeEnemySlot,
+  freeFriendSlot,
+  giveRocketAmmo,
+  jubey,
+  living,
+  log,
+  pick,
+  planEnemies,
+  repair,
+  roll,
+  shuffle,
+  spawn,
+  stripWreck,
+  takeWreck,
+  tripMine,
+  is,
+} from "./core";
+import { canPlay, commandsFor, ejectedCommand, playCard, runCommand, validTargets } from "./cards";
+import { eventView, openEvent, openHallway, openPatient, openRemembers, openYard, resolveEvent, rollChoice, type Flow } from "./events";
+import { createGame, type Action, type GameState, type Unit } from "./state";
 
-export interface Unit {
-  uid: string;
-  kind: UnitKind;
-  side: Side;
-  slot: number;
-  hp: number;
-  maxHp: number;
-  lock: number;
-  missiles: number;
-  burn: number;
-  stunned: number;
-  crazy: boolean;
-  wreck: boolean;
+export { SAVE_VERSION, createGame } from "./state";
+export type { Action, CardInst, GameState, Unit, Wreck, Plan } from "./state";
+export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, type Command } from "./cards";
+export { eventView, type EventView, type Option } from "./events";
+export { living, jubey, enemyHitChance, allies } from "./core";
+
+// ---------- room flow ----------
+
+export function riskyOdds(room: number): { crazy: number; nightmare: number } {
+  return { crazy: 0.01 + (room - 1) * 0.013, nightmare: 0.03 + (room - 1) * 0.04 };
 }
-
-export interface GameState {
-  seed: number;
-  rng: number;
-  phase: Phase;
-  room: number;
-  turn: number;
-  log: string[];
-  units: Unit[];
-  uidSeq: number;
-  energy: number;
-  energyCap: number;
-  bonusEnergy: number;
-  scrap: number;
-  rs: number;
-  cash: number;
-  threat: number;
-  madness: number;
-  nightmare: number;
-  hpUpRank: number;
-  jubeyMax: number;
-  craneUsed: boolean;
-  gunUsed: boolean;
-  rocketUsed: boolean;
-  ownsRocket: boolean;
-  rocketEquipped: boolean;
-  rocketAmmo: number;
-  rocketFindChance: number;
-  farmed: boolean;
-  pathRisky: boolean;
-  extraCrazy: number;
-  extraNightmare: number;
-  pendingInfested: number;
-  choiceShown: ChoiceDef[];
-  lastHook: string;
-  accModEnemy: number;
-  accModPlayerFlat: number;
+export function leg(room: number): number {
+  return Math.floor((room - 1) / RULES.deconEvery);
+}
+export function rotCards(state: GameState): number {
+  return Math.min(RULES.contamRotMax, Math.floor(state.contamination / RULES.contamPerRot));
 }
 
-function mulberry(_n: number) {
-  return () => 0;
-}
-void mulberry;
-void DEPTH;
-
-export function createGame(seed = 1): GameState {
-  return {
-    seed,
-    rng: seed >>> 0,
-    phase: "title",
-    room: 0,
-    turn: 0,
-    log: ["MECHANICA DESCENT. White rig. Abandoned base. Decon is four rooms down."],
-    units: [],
-    uidSeq: 1,
-    energy: RULES.startEnergy,
-    energyCap: RULES.startEnergy,
-    bonusEnergy: 0,
-    scrap: 0,
-    rs: 0,
-    cash: 0,
-    threat: 0,
-    madness: 0,
-    nightmare: 0,
-    hpUpRank: 0,
-    jubeyMax: RULES.startHp,
-    craneUsed: false,
-    gunUsed: false,
-    rocketUsed: false,
-    ownsRocket: false,
-    rocketEquipped: false,
-    rocketAmmo: 0,
-    rocketFindChance: RULES.rocketFindBase,
-    farmed: false,
-    pathRisky: false,
-    extraCrazy: 0,
-    extraNightmare: 0,
-    pendingInfested: 0,
-    choiceShown: [],
-    lastHook: "",
-    accModEnemy: 0,
-    accModPlayerFlat: 0,
-  };
-}
-
-function nextRng(state: GameState): number {
-  let x = state.rng || 1;
-  x ^= x << 13;
-  x ^= x >>> 17;
-  x ^= x << 5;
-  state.rng = x >>> 0;
-  return (state.rng % 10000) / 10000;
-}
-function roll(state: GameState): number {
-  return nextRng(state);
-}
-function chance(state: GameState, p: number): boolean {
-  return roll(state) < p;
-}
-function log(state: GameState, msg: string) {
-  state.log = [msg, ...state.log].slice(0, 80);
-}
-function uid(state: GameState): string {
-  state.uidSeq += 1;
-  return "u" + state.uidSeq;
-}
-function stats(kind: UnitKind): { hp: number; missiles: number } {
-  switch (kind) {
-    case "jubey":
-      return { hp: RULES.startHp, missiles: 0 };
-    case "light":
-    case "scared":
-      return { hp: 4, missiles: 2 };
-    case "lvl2":
-      return { hp: 8, missiles: 2 };
-    case "infested":
-      return { hp: 5, missiles: 0 };
-    case "drone":
-      return { hp: 2, missiles: 0 };
-    case "zombie":
-      return { hp: 10, missiles: 0 };
-    case "rifleman":
-      return { hp: 1, missiles: 0 };
-  }
-}
-function spawn(state: GameState, kind: UnitKind, side: Side, slot: number, crazy = false): Unit {
-  const st = stats(kind);
-  const u: Unit = {
-    uid: uid(state),
-    kind,
-    side,
-    slot,
-    hp: kind === "jubey" ? state.jubeyMax : st.hp,
-    maxHp: kind === "jubey" ? state.jubeyMax : st.hp,
-    lock: 0,
-    missiles: st.missiles,
-    burn: 0,
-    stunned: 0,
-    crazy,
-    wreck: false,
-  };
-  state.units.push(u);
-  return u;
-}
-function living(state: GameState, side?: Side): Unit[] {
-  return state.units.filter((u) => !u.wreck && u.hp > 0 && (side ? u.side === side : true));
-}
-function jubey(state: GameState): Unit | undefined {
-  return state.units.find((u) => u.kind === "jubey" && !u.wreck);
-}
-function isDead(state: GameState): boolean {
-  return !jubey(state) || state.phase === "dead";
-}
-function hitChance(baseHit: number, steps: number): number {
-  let miss = 1 - baseHit;
-  if (steps > 0) for (let i = 0; i < steps; i++) miss *= 0.5;
-  else if (steps < 0) for (let i = 0; i < -steps; i++) miss = Math.min(1, miss * 2);
-  return 1 - miss;
-}
-function playerHit(state: GameState): number {
-  return hitChance(Math.max(0, 1 - state.accModPlayerFlat), 0);
-}
-function enemyHit(state: GameState, extra = 0): number {
-  return hitChance(0.75, state.accModEnemy + extra);
-}
-function madFail(state: GameState): boolean {
-  return state.madness > 0 && chance(state, state.madness / 100);
-}
-function crazyDmg(base: number, crazy: boolean, state: GameState): number {
-  if (!crazy) return base;
-  const half = base * 1.5;
-  if (base % 2 === 0) return Math.round(half);
-  const down = Math.floor(half);
-  return chance(state, 0.5) ? down + 1 : down;
-}
-function applyBurnTicks(state: GameState) {
-  for (const u of living(state)) {
-    if (u.burn > 0) {
-      u.hp -= 1;
-      u.burn -= 1;
-      log(state, `${label(u.kind)} burns (1). ${u.hp} HP left.`);
-      if (u.hp <= 0) kill(state, u);
-    }
-  }
-}
-function legalWeaponDrop(u: Unit): boolean {
-  if (u.side !== "enemy") return false;
-  if (u.kind === "infested" || u.kind === "rifleman" || u.kind === "drone") return false;
-  return u.kind === "light" || u.kind === "lvl2" || u.kind === "zombie";
-}
-function rollWeaponFinds(state: GameState, dead: Unit) {
-  if (!legalWeaponDrop(dead)) return;
-  if (!state.ownsRocket) {
-    const doubled = dead.kind === "lvl2";
-    const rollP = doubled ? Math.min(0.8, state.rocketFindChance * 2) : state.rocketFindChance;
-    const hit = chance(state, rollP);
-    log(state, `Rocket frame roll ${Math.round(rollP * 100)}%${doubled ? " (Lvl2 double)" : ""} — ${hit ? "FOUND" : "miss"}.`);
-    if (hit) {
-      state.ownsRocket = true;
-      state.rocketAmmo += 1;
-      state.rocketFindChance = RULES.rocketFindBase;
-      log(state, "Rocket launcher recovered. +1 ammo. Equip it at Tech Stop.");
-    } else {
-      state.rocketFindChance = Math.min(RULES.rocketFindCap, state.rocketFindChance + RULES.rocketFindPity);
-    }
-  }
-  const ammoP = dead.kind === "lvl2" ? RULES.rocketAmmoLvl2 : RULES.rocketAmmoLight;
-  if (chance(state, ammoP)) {
-    state.rocketAmmo += 1;
-    log(state, `HEAP round in the wreck. Rocket ammo ${state.rocketAmmo}.`);
-  }
-}
-function kill(state: GameState, u: Unit) {
-  if (u.wreck) return;
-  u.hp = 0;
-  u.wreck = true;
-  log(state, `${label(u.kind)} down.`);
-  if (u.kind === "jubey") {
-    state.phase = "dead";
-    log(state, "Jubey is still. The hall keeps the rig.");
-    return;
-  }
-  if (u.kind === "infested") {
-    state.nightmare += 1;
-    log(state, `Nightmare count ${state.nightmare}/${RULES.nightmareThreshold}. No scrap.`);
-    if (state.nightmare >= RULES.nightmareThreshold) {
-      state.nightmare = 0;
-      log(state, "Red Metal Teeth sweep the lane. Defenses stripped (placeholder).");
-    }
-  } else if (u.side === "enemy") {
-    if ((u.kind === "light" || u.kind === "lvl2" || u.kind === "zombie") && chance(state, RULES.rsDrop)) {
-      state.rs += 1;
-      log(state, "+1 Reactor Salvage.");
-    }
-    rollWeaponFinds(state, u);
-  }
-}
-function deal(state: GameState, target: Unit, amount: number, src: string) {
-  if (!target || target.wreck) return;
-  target.hp -= amount;
-  log(state, `${src} hits ${label(target.kind)} for ${amount}. (${target.hp}/${target.maxHp})`);
-  if (target.hp <= 0) kill(state, target);
-}
-function nearestFriend(state: GameState, fromSlot: number): Unit | undefined {
-  const foes = living(state, "friendly");
-  if (!foes.length) return;
-  return foes.slice().sort((a, b) => Math.abs(a.slot - fromSlot) - Math.abs(b.slot - fromSlot) || a.slot - b.slot)[0];
-}
-function unitById(state: GameState, id: string): Unit | undefined {
-  return state.units.find((u) => u.uid === id);
-}
-function beginPlayerTurn(state: GameState) {
-  state.phase = "player";
-  state.turn += 1;
-  state.energy = state.energyCap + state.bonusEnergy;
-  state.craneUsed = false;
-  state.gunUsed = false;
-  state.rocketUsed = false;
-  state.farmed = false;
-  state.accModEnemy = 0;
-  applyBurnTicks(state);
-  if (isDead(state)) {
-    state.phase = "dead";
-    return;
-  }
-  if (!living(state, "enemy").length) finishRoom(state);
-}
-function finishRoom(state: GameState) {
-  state.bonusEnergy = 0;
-  state.extraCrazy = 0;
-  state.extraNightmare = 0;
-  state.pendingInfested = 0;
-  if (state.room >= RULES.roomsToDecon) {
-    state.phase = "win";
-    log(state, "Decon Bay. Gold light. The rig comes clean.");
-    return;
-  }
-  state.phase = "tech";
-  log(state, `Room ${state.room} clear. Tech Stop.`);
-}
-function spawnPack(state: GameState) {
+function rollPack(state: GameState): UnitKind[] {
   const d = depthFor(state.room);
   const kinds: UnitKind[] = [];
-  for (let i = 0; i < d.alwaysLight; i++) kinds.push("light");
+  const lights = d.alwaysLight + leg(state.room) * RULES.legExtraLight;
+  for (let i = 0; i < lights; i++) kinds.push("light");
   if (chance(state, d.extraLight)) kinds.push("light");
   if (chance(state, d.infested)) kinds.push("infested");
-  for (let i = 0; i < state.pendingInfested; i++) kinds.push("infested");
-  if (chance(state, d.lvl2) && state.room >= 3) {
-    const idx = kinds.findIndex((k) => k === "light");
+  if (state.room >= 3 && chance(state, d.lvl2)) {
+    const idx = kinds.indexOf("light");
     if (idx >= 0) kinds[idx] = "lvl2";
     else kinds.push("lvl2");
   }
-  let crazy = false;
-  const crazyP = (state.pathRisky ? 0.01 + (state.room - 1) * 0.013 : 0) + state.extraCrazy;
-  const nightP = (state.pathRisky ? 0.03 + (state.room - 1) * 0.04 : 0) + state.extraNightmare;
-  log(state, `Room ${state.room} odds  crazy ${Math.round(crazyP * 100)}%  nightmare ${Math.round(nightP * 100)}%  infested table ${Math.round(d.infested * 100)}%.`);
-  if (chance(state, nightP)) {
-    log(state, "Nightmare card: THE RIFLEMEN FILE IN.");
-    for (let i = 0; i < 6; i++) spawn(state, "rifleman", "enemy", i, false);
-  } else if (chance(state, crazyP)) {
-    crazy = true;
-    log(state, "A mech comes in CRAZY.");
-  }
-  let slot = 0;
-  for (const k of kinds) {
-    const u = spawn(state, k, "enemy", slot, crazy && k !== "infested" && k !== "rifleman");
-    log(state, `Spawn ${label(u.kind)}${u.crazy ? " [CRAZY]" : ""} col ${slot + 1}.`);
-    slot = (slot + 1) % 6;
-  }
+  if (state.room >= RULES.zombieFromRoom && chance(state, RULES.zombieChance)) kinds.push("zombie");
+  if (state.room >= RULES.poweredFromRoom && chance(state, RULES.poweredChance)) kinds.push("powered");
+  return kinds;
 }
+
 function startRoom(state: GameState) {
   state.room += 1;
   state.turn = 0;
-  state.units = state.units.filter((u) => u.side === "friendly" && !u.wreck);
+  state.units = state.units.filter((u) => u.side === "friendly" && u.hp > 0);
+  state.wrecks = [];
   if (!jubey(state)) spawn(state, "jubey", "friendly", 2);
   state.pathRisky = false;
   state.pendingInfested = 0;
   state.extraCrazy = 0;
   state.extraNightmare = 0;
+  state.bonusEnergy = 0;
+  state.queue = [];
+  state.hallStage = 0;
+  state.hallwayArmed = false;
+  state.hallwayDone = false;
+  state.extension = false;
+  state.energy = state.energyCap;
+  state.nextPack = rollPack(state);
   state.phase = "route";
   log(state, `— Room ${state.room} path —`);
+  if (state.room > RULES.deconEvery) addContamination(state, RULES.contamPerLegRoom, "The deep halls get on the rig.");
 }
-function enterChosenPath(state: GameState) {
-  if (chance(state, RULES.choiceChance)) {
-    const pool = [...CHOICES];
-    const a = pool.splice(Math.floor(roll(state) * pool.length), 1)[0];
-    const b = pool.splice(Math.floor(roll(state) * pool.length), 1)[0];
-    state.choiceShown = [a, b];
-    state.lastHook = a.hook;
-    state.phase = "choice";
-    log(state, "Choice encounter.");
-    return;
+
+/** Walk the hall: each possible event gets one chance, then the fight. */
+function continueHall(state: GameState) {
+  while (state.hallStage < 5) {
+    const stage = state.hallStage++;
+    const deep = state.room >= 2;
+    if (stage === 0) {
+      const b = allies(state, "builder").find((x) => !x.temp);
+      if (b && !state.seen.droneRemembers && chance(state, RULES.droneRemembersChance)) return openRemembers(state);
+    } else if (stage === 1) {
+      const has = state.units.some((u) => u.kind === "scared" && u.hp > 0);
+      if (!state.metScared && !has && state.room >= RULES.scaredFromRoom && chance(state, RULES.scaredChance)) {
+        state.metScared = true;
+        log(state, "Something is breathing in the smoke.");
+        return openEvent(state, "scared");
+      }
+    } else if (stage === 2) {
+      if (deep && !state.seen.patient && chance(state, RULES.patientChance)) return openPatient(state);
+    } else if (stage === 3) {
+      if (deep && !state.seen.yard && chance(state, RULES.yardChance)) return openYard(state);
+    } else if (stage === 4) {
+      if (chance(state, RULES.choiceChance)) return rollChoice(state);
+    }
   }
+  beginFight(state);
+}
+
+function arrive(state: GameState) {
+  for (let i = 0; i < RULES.arrivalsPerTurn && state.queue.length; i++) {
+    const slot = freeEnemySlot(state);
+    if (slot < 0) return;
+    const kind = state.queue.shift()!;
+    const u = spawn(state, kind, "enemy", slot);
+    log(state, `${label(kind)} enters column ${slot + 1}.`);
+    if (state.turn >= 1) tripMine(state, u);
+  }
+}
+
+function spawnPack(state: GameState) {
+  const odds = riskyOdds(state.room);
+  const crazyP = (state.pathRisky ? odds.crazy : 0) + state.extraCrazy;
+  const nightP = (state.pathRisky ? odds.nightmare : 0) + state.extraNightmare;
+  const extra: UnitKind[] = [...state.pendingSpawn];
+  state.pendingSpawn = [];
+
+  if (chance(state, nightP)) {
+    log(state, "Nightmare card: THE RIFLEMEN FILE IN.");
+    for (let i = 0; i < RULES.riflemen; i++) state.queue.push("rifleman");
+    arrive(state);
+  } else {
+    const kinds = [...state.nextPack];
+    for (let i = 0; i < state.pendingInfested; i++) kinds.push("infested");
+    const crazy = chance(state, crazyP);
+    if (crazy) log(state, "A mech comes in CRAZY.");
+    for (const k of kinds) {
+      const slot = freeEnemySlot(state);
+      if (slot < 0) {
+        state.queue.push(k);
+        continue;
+      }
+      const u = spawn(state, k, "enemy", slot, { crazy: crazy && k !== "infested" });
+      log(state, `${label(u.kind)}${u.crazy ? " [CRAZY]" : ""} in column ${slot + 1}.`);
+    }
+  }
+  for (const k of extra) {
+    const slot = freeEnemySlot(state);
+    if (slot < 0) {
+      state.queue.push(k);
+      continue;
+    }
+    const u = spawn(state, k, "enemy", slot);
+    if (k === "patient") {
+      if (state.patientRepairable) u.note = "repairable";
+      state.patientRepairable = false;
+      log(state, "The Patient Machine is here, weapons up, screen still asking for repair.");
+    } else log(state, `${label(k)} followed you in.`);
+  }
+  const drones = Math.min(RULES.threatDroneMax, Math.floor(state.threat / RULES.threatPerDrone));
+  if (drones > 0) log(state, `Threat ${state.threat}: ${drones} Drone${drones > 1 ? "s" : ""} inbound.`);
+  const shadow = state.pathRisky ? RULES.riskyDrones : 0;
+  if (shadow > 0) log(state, "Something small follows you down the red hall.");
+  for (let i = 0; i < drones + shadow; i++) state.queue.push("drone");
+}
+
+function resetFightState(state: GameState) {
+  const bound = new Set(state.units.filter((u) => u.hp > 0).map((u) => u.cardUid));
+  state.draw = shuffle(state, state.deck.filter((c) => !bound.has(c.uid)));
+  for (let i = 0; i < rotCards(state); i++) state.draw.push({ uid: `rot${state.uidSeq++}`, id: "ROT", temp: true });
+  if (rotCards(state) > 0) {
+    state.draw = shuffle(state, state.draw);
+    log(state, `Contamination ${state.contamination}: ${rotCards(state)} Contaminated Seal${rotCards(state) > 1 ? "s" : ""} in the deck this fight.`);
+  }
+  state.hand = [];
+  state.discard = [];
+  state.armed = [];
+  state.block = 0;
+  state.turn = 0;
+  state.handUsed = false;
+  state.recorderUsed = false;
+  state.symbioticPaid = 0;
+  state.possumPaid = 0;
+  state.redmouth = null;
+  state.bonusDraw = 0;
+  state.ejected = null;
+  state.badge = { turns: 0, flagged: false, hostile: false };
+  state.minesArmed = state.loadoutAd.filter((c) => c === "MINE").length;
+  if (state.minesArmed > 0) log(state, `AM Mine deploys itself by the door (${state.minesArmed}).`);
+  for (const u of state.units) {
+    u.intercepted = false;
+    u.sorted = 0;
+    u.emergencyUsed = false;
+    u.dmgTurn = 0;
+    u.plan = undefined;
+  }
+}
+
+function beginFight(state: GameState) {
+  state.extension = false;
   spawnPack(state);
+  resetFightState(state);
+  openTurnOne(state);
+}
+
+function startExtension(state: GameState, kinds: UnitKind[], setup?: (state: GameState, foes: Unit[]) => void) {
+  state.extension = true;
+  state.wrecks = state.wrecks.filter((w) => w.free);
+  state.queue = [];
+  const foes = kinds.map((k) => spawn(state, k, "enemy", Math.max(0, freeEnemySlot(state))));
+  resetFightState(state);
+  setup?.(state, foes);
+  for (const f of foes) log(state, `${label(f.kind)}${f.note ? ` (${f.note})` : ""} in column ${f.slot + 1}.`);
+  openTurnOne(state);
+}
+
+function openTurnOne(state: GameState) {
+  state.phase = "player";
+  if (state.enemyInitiative) {
+    state.enemyInitiative = false;
+    log(state, "It gets the first shot.");
+    planEnemies(state);
+    for (const u of living(state, "enemy")) if (u.hp > 0 && state.phase === "player") enemyAct(state, u);
+    if (isOver(state)) return;
+  }
   beginPlayerTurn(state);
-}
-export type Action =
-  | { type: "start"; seed?: number }
-  | { type: "pickPath"; risky: boolean }
-  | { type: "pickChoice"; id: ChoiceId | "NONE" }
-  | { type: "gun"; targetId: string }
-  | { type: "crane"; slot: number }
-  | { type: "rocket"; targetId: string }
-  | { type: "salvage"; targetId: string }
-  | { type: "endTurn" }
-  | { type: "buyEnergy" }
-  | { type: "buyHp" }
-  | { type: "equipRocket"; on: boolean }
-  | { type: "nextRoom" }
-  | { type: "qa"; cmd: string; n?: number; id?: string };
-function applyChoice(state: GameState, id: ChoiceId | "NONE") {
-  if (id === "NONE") {
-    log(state, "Keep moving.");
-    spawnPack(state);
-    beginPlayerTurn(state);
-    return;
+  if (state.firstStrike && state.phase === "player") {
+    state.firstStrike = false;
+    state.energy += 1;
+    log(state, "You are set and waiting: +1 Energy this turn.");
   }
-  const def = CHOICES.find((c) => c.id === id);
-  if (!def) return;
-  log(state, def.take);
-  switch (id) {
-    case "CHOICE_SCRAP_BAIT":
-      state.scrap += 2;
-      if (chance(state, 0.5)) {
-        state.pendingInfested += 1;
-        log(state, "The ticking becomes a body. Extra Infested this room.");
+}
+
+function isOver(state: GameState): boolean {
+  if (state.phase === "dead" || !jubey(state)) {
+    state.phase = "dead";
+    return true;
+  }
+  return false;
+}
+
+function beginPlayerTurn(state: GameState) {
+  state.phase = "player";
+  state.turn += 1;
+  state.energy = state.energyCap + state.bonusEnergy;
+  state.block = 0;
+  state.salvagedThisTurn = false;
+  state.accModEnemy = 0;
+  state.servoUsed = false;
+  state.reflexUsed = false;
+  for (const u of living(state)) {
+    u.dmgTurn = 0;
+    u.ward = 0;
+    u.shutdown = false;
+    u.emergencyUsed = false;
+    if (u.leech) u.leech.firedTurn = false;
+    if (u.foam) {
+      u.foam = false;
+      u.mood = undefined;
+      log(state, `The foam cracks off ${label(u.kind)}.`);
+      if (u.side === "friendly") repair(state, u, RULES.foamHeal, "Maintenance Foam");
+    }
+  }
+  for (const u of living(state)) {
+    if (u.burn > 0 && u.hp > 0) {
+      u.burn -= 1;
+      log(state, `${label(u.kind)} burns.`);
+      deal(state, u, 1, "Fire", { noLeech: false });
+    }
+  }
+  if (isOver(state)) return;
+  // Possessed Builder: roll the malfunction now so it can be seen and overridden.
+  for (const b of allies(state, "builder")) {
+    b.malf = undefined;
+    const due = (b.timer ?? RULES.builderInterval) <= 1 && !b.jammed;
+    const enemyHurt = living(state, "enemy").some((e) => is(e, "mechanical") && e.hp < e.maxHp);
+    const allyHurt = living(state, "friendly").some((f) => f.uid !== b.uid && f.hp < f.maxHp);
+    if (b.variant === "possessed" && due && enemyHurt && allyHurt && chance(state, RULES.possessedWrong)) {
+      b.malf = "wrongRepair";
+      b.mood = "staring at the enemy";
+      log(state, "The Possessed Builder turns toward a damaged enemy and starts warming its welder.");
+    }
+  }
+  drawCards(state, RULES.handSize - state.hand.length + state.bonusDraw);
+  state.bonusDraw = 0;
+  planEnemies(state);
+  checkClear(state);
+}
+
+/** Runs once when a fight ends: pays out, clears statuses, sends temporary things home. */
+function endFight(state: GameState) {
+  if (state.pendingScrap > 0) {
+    addScrap(state, state.pendingScrap, "Bonus salvage");
+    state.pendingScrap = 0;
+  }
+  for (const p of allies(state, "possum")) {
+    if ((p.carried ?? 0) > 0) addScrap(state, p.carried!, "Machine Possum hands over its takings");
+    p.carried = 0;
+  }
+  for (const w of state.wrecks.filter((x) => x.free)) {
+    takeWreck(state, w.id);
+    addScrap(state, w.value, "Recovered from a friendly wreck");
+  }
+  const buddy = allies(state, "robobuddy")[0];
+  const pickup = state.wrecks[0];
+  if (buddy && pickup) {
+    takeWreck(state, pickup.id);
+    addScrap(state, pickup.value, "Lil Robobuddy drags a wreck over, quietly");
+  }
+  state.units = state.units.filter((u) => u.side === "friendly" && u.hp > 0 && !u.temp && !["gunnest", "bulkhead", "beacon"].includes(u.kind));
+  for (const u of state.units) {
+    u.foam = false;
+    u.sealed = 0;
+    u.leech = undefined;
+    u.malf = undefined;
+    u.ward = 0;
+    u.shutdown = false;
+    u.jammed = false;
+    u.acted = false;
+    u.overrideDmg = false;
+    u.burn = 0;
+    u.protect = state.units.some((x) => x.uid === u.protect) ? u.protect : undefined;
+    if (u.rage) {
+      u.rage = false;
+      u.atk -= RULES.jackRage;
+    }
+    if (u.away) {
+      u.away -= 1;
+      if (!u.away) {
+        if (u.note === "ret-salvage") addScrap(state, 2, "The Builder Drone catches up, dragging salvage");
+        else if (u.note === "ret-damaged") {
+          u.hp = Math.max(1, u.hp - 2);
+          log(state, `The Builder Drone catches up, scorched (${u.hp}/${u.maxHp}).`);
+        } else if (u.note === "ret-late") {
+          u.away = 1;
+          u.note = "ret-late0";
+          log(state, "No sign of the Builder Drone yet. Its signal is still moving.");
+        } else log(state, "The Builder Drone catches up, chirping.");
+        if (!u.away) u.note = undefined;
       }
-      break;
-    case "CHOICE_ROCKET_MADNESS":
-      state.rocketAmmo += 1;
-      state.madness += 2;
-      log(state, `Rocket ammo ${state.rocketAmmo}. Madness ${state.madness}%.`);
-      break;
-    case "CHOICE_COOLANT_SIPHON": {
-      const j = jubey(state);
-      if (j && j.hp < state.jubeyMax) {
-        j.hp += 1;
-        log(state, `Jubey heals to ${j.hp}.`);
+    } else if (u.roomsLeft !== undefined) {
+      u.roomsLeft -= 1;
+      if (u.roomsLeft <= 0) {
+        u.hp = 0;
+        log(state, "The Patient Machine stops walking. Its screen says DONE and goes dark.");
       }
-      state.threat += 1;
-      break;
-    }
-    case "CHOICE_SEALED_LOCKER":
-      state.madness += 1;
-      if (chance(state, 0.4)) {
-        state.rs += 1;
-        log(state, "+1 RS from the locker.");
-      } else log(state, "Locker: nothing you can use.");
-      break;
-    case "CHOICE_CUT_COMMS":
-      state.threat = Math.max(0, state.threat - 1);
-      state.extraCrazy += 0.08;
-      log(state, `Threat ${state.threat}. +8% Crazy this room.`);
-      break;
-    case "CHOICE_FLARE_CHARGE":
-      state.bonusEnergy += 1;
-      state.extraNightmare += 0.25;
-      log(state, "+1 Energy this room. 25% extra Nightmare.");
-      break;
-  }
-  spawnPack(state);
-  beginPlayerTurn(state);
-}
-function fireGun(state: GameState, targetId: string) {
-  if (state.phase !== "player" || state.gunUsed || state.energy < 1) return;
-  const t = unitById(state, targetId);
-  if (!t || t.side !== "enemy" || t.wreck) return;
-  if (madFail(state)) {
-    log(state, "Machine gun fails (Madness).");
-    state.energy -= 1;
-    state.gunUsed = true;
-    return;
-  }
-  state.energy -= 1;
-  state.gunUsed = true;
-  if (!chance(state, playerHit(state))) {
-    log(state, "Machine gun misses.");
-    return;
-  }
-  deal(state, t, 1 + Math.floor(roll(state) * 3), "Salvaged machine gun");
-}
-function fireCrane(state: GameState, slot: number) {
-  if (state.phase !== "player" || state.craneUsed || state.energy < 1) return;
-  if (madFail(state)) {
-    log(state, "Crane Smash fails (Madness).");
-    state.energy -= 1;
-    state.craneUsed = true;
-    return;
-  }
-  state.energy -= 1;
-  state.craneUsed = true;
-  const slots = [slot - 1, slot, slot + 1].filter((s) => s >= 0 && s < 6);
-  const hits = living(state, "enemy").filter((u) => slots.includes(u.slot));
-  if (!hits.length) {
-    log(state, "Crane Smash hits empty air.");
-    return;
-  }
-  for (const t of hits) {
-    deal(state, t, 3, "Crane Smash");
-    if (!t.wreck && chance(state, 0.25)) {
-      t.stunned = 1;
-      log(state, `${label(t.kind)} stunned.`);
-    }
-    if (!t.wreck) {
-      state.accModEnemy += 1;
-      log(state, `${label(t.kind)} survivors aim sharper (+1 acc step).`);
     }
   }
+  state.units = state.units.filter((u) => u.hp > 0);
+  state.draw = [];
+  state.hand = [];
+  state.discard = [];
+  state.armed = [];
+  state.redmouth = null;
+  state.ejected = null;
+  state.minesArmed = 0;
+  state.block = 0;
+  state.queue = [];
+  state.energy = state.energyCap;
 }
-function fireRocket(state: GameState, targetId: string) {
+
+function checkClear(state: GameState) {
   if (state.phase !== "player") return;
-  if (!state.ownsRocket || !state.rocketEquipped || state.rocketAmmo < 1 || state.rocketUsed) return;
-  if (state.energy < 1) return;
-  const t = unitById(state, targetId);
-  if (!t || t.side !== "enemy" || t.wreck) return;
-  if (madFail(state)) {
-    log(state, "Rocket fizzles (Madness). Ammo kept.");
-    return;
+  if (living(state, "enemy").length || state.queue.length) return;
+  const wasExtension = state.extension;
+  log(state, wasExtension ? "The hallway is quiet." : `Room ${state.room} clear.`);
+  endFight(state);
+  if (!wasExtension) {
+    state.bonusEnergy = 0;
+    state.extraCrazy = 0;
+    state.extraNightmare = 0;
+    state.pendingInfested = 0;
+    if (state.pathRisky) addScrap(state, RULES.riskyClearScrap, "Red hall pays");
+    if (!state.hallwayDone && (state.hallwayArmed || chance(state, RULES.hallwayChance))) return openHallway(state);
   }
-  state.energy -= 1;
-  state.rocketAmmo -= 1;
-  state.rocketUsed = true;
-  if (!chance(state, playerHit(state))) {
-    log(state, "Rocket misses. Ammo spent.");
-    return;
-  }
-  const splash = living(state, "enemy").filter((u) => Math.abs(u.slot - t.slot) === 1);
-  deal(state, t, 4, "Rocket");
-  if (!t.wreck) t.burn = Math.max(t.burn, 2);
-  for (const s of splash) {
-    deal(state, s, 2, "Rocket splash");
-    if (!s.wreck) s.burn = Math.max(s.burn, 2);
-  }
-  log(state, `Rocket ammo left: ${state.rocketAmmo}.`);
+  finishRoom(state);
 }
-function salvage(state: GameState, targetId: string) {
-  if (state.phase !== "player") return;
-  const t = unitById(state, targetId);
-  if (!t || !t.wreck || t.side !== "enemy") return;
-  if (t.kind === "infested") {
-    log(state, "Infested wreck gives nothing.");
-    state.units = state.units.filter((u) => u.uid !== t.uid);
-    return;
+
+function finishRoom(state: GameState) {
+  state.extension = false;
+  state.hallwayDone = true;
+  state.event = null;
+  state.energy = state.energyCap;
+  const expired = state.deck.filter((c) => c.expires !== undefined && c.expires <= state.room);
+  for (const c of expired) {
+    state.deck = state.deck.filter((x) => x.uid !== c.uid);
+    log(state, `The borrowed ${cardName(c.id)} stops moving and is left behind.`);
   }
-  state.scrap += RULES.salvageScrap;
-  state.threat += RULES.salvageThreat;
-  state.farmed = true;
-  state.nightmare += 1;
-  log(state, `Salvage +1 Scrap +1 Threat. Nightmare ${state.nightmare}.`);
-  if (state.nightmare >= RULES.nightmareThreshold) {
-    state.nightmare = 0;
-    log(state, "Red Metal Teeth sweep.");
-  }
-  state.units = state.units.filter((u) => u.uid !== t.uid);
+  if (isOver(state)) return;
+  if (state.wrecks.length) {
+    state.phase = "salvage";
+    log(state, "The wrecks are still warm. Strip them, or leave them.");
+  } else toReward(state);
 }
-function enemyAct(state: GameState, u: Unit) {
-  if (u.stunned > 0) {
-    u.stunned -= 1;
-    log(state, `${label(u.kind)} is stunned.`);
-    return;
+
+function toReward(state: GameState) {
+  state.wrecks = [];
+  const pool = REWARD_POOL.slice();
+  const shown: CardId[] = [];
+  while (shown.length < 3 && pool.length) {
+    const total = pool.reduce((n, id) => n + RARITY_WEIGHT[CARDS[id].rarity], 0);
+    let r = roll(state) * total;
+    const i = pool.findIndex((id) => (r -= RARITY_WEIGHT[CARDS[id].rarity]) < 0);
+    shown.push(pool.splice(Math.max(0, i), 1)[0]);
   }
-  if (u.kind === "rifleman") {
-    const tgt = nearestFriend(state, u.slot);
-    if (!tgt) return;
-    if (chance(state, enemyHit(state))) deal(state, tgt, 1, label(u.kind));
-    else log(state, `${label(u.kind)} misses.`);
-    return;
-  }
-  if (u.kind === "infested") {
-    const tgt = state.threat >= RULES.threatHunt ? jubey(state) ?? nearestFriend(state, u.slot) : nearestFriend(state, u.slot);
-    if (!tgt) return;
-    if (chance(state, enemyHit(state))) deal(state, tgt, 2, "Infested");
-    else log(state, "Infested misses.");
-    return;
-  }
-  let tgt =
-    u.kind === "lvl2" || u.kind === "light" || u.kind === "zombie"
-      ? jubey(state) ?? nearestFriend(state, u.slot)
-      : nearestFriend(state, u.slot);
-  if (u.crazy && chance(state, RULES.crazyFriendlyFire)) {
-    const allies = living(state, "enemy").filter((a) => a.uid !== u.uid && Math.abs(a.slot - u.slot) <= 1);
-    if (allies.length) {
-      tgt = allies[Math.floor(roll(state) * allies.length)];
-      log(state, `${label(u.kind)} [CRAZY] swings at its own.`);
-    }
-  }
-  if (!tgt) return;
-  const shot = u.kind === "lvl2" ? 2 : 1;
-  const missile = u.kind === "lvl2" ? 6 : 3;
-  if (u.lock >= 2 && u.missiles > 0) {
-    if (chance(state, enemyHit(state))) {
-      deal(state, tgt, crazyDmg(missile, u.crazy, state), `${label(u.kind)} missile`);
-      if (!tgt.wreck && chance(state, 0.5)) {
-        tgt.burn = Math.max(tgt.burn, 2);
-        log(state, `${label(tgt.kind)} ignited.`);
-      }
-    } else log(state, `${label(u.kind)} missile misses.`);
-    u.lock = 0;
-    u.missiles -= 1;
-    return;
-  }
-  if (chance(state, enemyHit(state))) {
-    deal(state, tgt, crazyDmg(shot, u.crazy, state), label(u.kind));
-    if (!tgt.wreck) u.lock += 1;
-  } else log(state, `${label(u.kind)} misses.`);
+  if (state.loadoutAd.length < RULES.adSlots && chance(state, 0.15)) shown[2] = "MINE";
+  state.rewardShown = shown;
+  state.phase = "reward";
 }
+
+function afterReward(state: GameState) {
+  state.rewardShown = [];
+  if (state.room % RULES.deconEvery === 0) {
+    state.phase = "decon";
+    log(state, "Decon Bay. Gold light under the door.");
+  } else toTech(state);
+}
+
+function toTech(state: GameState) {
+  state.phase = "tech";
+  if (RULES.restHeal > 0) repair(state, jubey(state), RULES.restHeal, "Rest");
+  log(state, "Tech Stop.");
+}
+
+const flow: Flow = { continueHall, finishRoom, startExtension };
+
+// ---------- turn ----------
+
 function endTurn(state: GameState) {
   if (state.phase !== "player") return;
-  state.phase = "resolving";
+  state.discard.push(...state.hand.filter((c) => !c.temp || c.id === "ROT"));
+  state.hand = [];
+  if (state.redmouth) {
+    const c = state.deck.find((x) => x.uid === state.redmouth);
+    if (c) state.discard.push(c);
+    state.redmouth = null;
+    log(state, "The Red-Mouth round is unloaded, unfired.");
+  }
+  for (const a of living(state, "friendly")) {
+    if (a.kind === "jubey" || a.hp <= 0 || state.phase !== "player") continue;
+    allyAct(state, a);
+  }
+  if (isOver(state)) return;
+  if (state.ejected) {
+    log(state, "A foot comes down on the ejected Leech. Gone for this fight.");
+    state.ejected = null;
+  }
   for (const u of living(state, "enemy")) {
-    if (isDead(state)) break;
+    if (state.phase !== "player") break;
+    if (u.hp <= 0) continue;
     enemyAct(state, u);
   }
-  if (isDead(state)) {
-    state.phase = "dead";
-    return;
+  if (isOver(state)) return;
+  arrive(state);
+  if (state.badge.turns > 0) {
+    state.badge.turns -= 1;
+    for (const d of living(state, "enemy")) if ((d.pacified ?? 0) > 0) d.pacified! -= 1;
+    if (state.badge.turns === 0) {
+      state.badge.flagged = true; // one check per room, pass or fail
+      const p = RULES.badgeFlag + (state.badge.hostile ? RULES.badgeHostilePenalty : 0);
+      if (chance(state, p)) {
+        state.threat += 1;
+        log(state, `Security verification: CREDENTIAL FLAGGED. Threat ${state.threat}.`);
+      } else log(state, "Security verification: the badge expires quietly.");
+    }
   }
-  state.madness = Math.max(0, state.madness - 2);
-  if (!state.farmed) state.threat = Math.max(0, state.threat - 1);
-  if (!living(state, "enemy").length) {
-    finishRoom(state);
-    return;
-  }
+  if (state.stripped > 0) state.stripped -= 1;
+  state.madness = Math.max(0, state.madness - RULES.madnessDecay);
+  if (!state.salvagedThisTurn) state.threat = Math.max(0, state.threat - 1);
   beginPlayerTurn(state);
 }
-function buyEnergy(state: GameState) {
-  if (state.phase !== "tech") return;
-  const row = ENERGY_UP.find((e) => e.from === state.energyCap);
-  if (!row) return;
-  if (state.scrap < row.scrap || state.rs < row.rs) {
-    log(state, "Not enough salvage for energy.");
-    return;
-  }
-  state.scrap -= row.scrap;
-  state.rs -= row.rs;
-  state.energyCap = row.to;
-  log(state, `Energy cap ${state.energyCap}.`);
+
+/** A hostile Patient Machine that gets stunned, foamed or sealed stabilizes instead of dying. */
+function stabilizePatient(state: GameState) {
+  const p = living(state, "enemy").find((u) => u.kind === "patient" && u.note === "repairable" && (u.foam || (u.sealed ?? 0) > 0 || u.stunned > 0));
+  const slot = freeFriendSlot(state);
+  if (!p || slot < 0) return;
+  Object.assign(p, { side: "friendly", slot, foam: false, sealed: 0, stunned: 0, note: undefined, plan: undefined, leech: undefined, roomsLeft: RULES.patientRooms, acted: true });
+  log(state, "Held still long enough, the Patient Machine's combat systems drop out. Its screen says REPAIR ACCEPTED. It turns to face the room with you.");
 }
-function buyHp(state: GameState) {
-  if (state.phase !== "tech") return;
-  const next = state.hpUpRank + 1;
-  const row = HP_UP.find((h) => h.rank === next);
-  if (!row) return;
-  if (state.scrap < row.scrap) {
-    log(state, "Not enough scrap for HP.");
-    return;
-  }
-  state.scrap -= row.scrap;
-  state.hpUpRank = next;
-  state.jubeyMax += 1;
-  const j = jubey(state);
-  if (j) {
-    j.maxHp = state.jubeyMax;
-    j.hp = Math.min(state.jubeyMax, j.hp + 1);
-  }
-  log(state, `Jubey max HP ${state.jubeyMax}.`);
-}
+
+// ---------- reducer ----------
+
 export function reduce(prev: GameState, action: Action): GameState {
+  if (action.type === "start") {
+    const fresh = createGame(action.seed ?? prev.seed);
+    fresh.best = prev.best ?? 0;
+    fresh.lastAction = "start";
+    for (const id of STARTING_DECK) addCard(fresh, id);
+    fresh.phase = "loadout";
+    log(fresh, "Pick one thing to carry in.");
+    return fresh;
+  }
   const state: GameState = structuredClone(prev);
+  state.events = [];
+  state.lastAction = action.type;
   switch (action.type) {
-    case "start": {
-      const fresh = createGame(action.seed ?? state.seed);
-      spawn(fresh, "jubey", "friendly", 2);
-      fresh.room = 0;
-      startRoom(fresh);
-      return fresh;
+    case "loadout": {
+      if (state.phase !== "loadout") break;
+      if (action.pick === "lootbox") {
+        const id = pick(state, LOOTBOX_POOL);
+        addCard(state, id);
+        state.scrap += RULES.lootboxScrap;
+        log(state, `Shabby Lootbox: ${CARDS[id].name} and ${RULES.lootboxScrap} Scrap.`);
+      } else if (action.pick === "mine") {
+        state.loadoutAd.push("MINE");
+        log(state, "AM Mine clipped to the rig. It will place itself.");
+      } else {
+        spawn(state, "jubey", "friendly", 2);
+        spawn(state, "robobuddy", "friendly", 3);
+        log(state, "Lil Robobuddy falls in beside the rig.");
+      }
+      startRoom(state);
+      break;
     }
     case "pickPath":
+      if (state.phase !== "route") break;
       state.pathRisky = action.risky;
+      state.revealNext = false;
       log(state, action.risky ? "Risky red hall." : "Normal hall.");
-      enterChosenPath(state);
+      continueHall(state);
       break;
-    case "pickChoice":
-      applyChoice(state, action.id);
+    case "event":
+      if (state.phase !== "event") break;
+      resolveEvent(state, action.option, flow);
+      isOver(state);
       break;
-    case "gun":
-      fireGun(state, action.targetId);
-      if (!living(state, "enemy").length && state.phase === "player") finishRoom(state);
+    case "play":
+      playCard(state, action.uid, action.targetId, action.slot);
+      stabilizePatient(state);
+      if (!isOver(state)) checkClear(state);
       break;
-    case "crane":
-      fireCrane(state, action.slot);
-      if (!living(state, "enemy").length && state.phase === "player") finishRoom(state);
-      break;
-    case "rocket":
-      fireRocket(state, action.targetId);
-      if (!living(state, "enemy").length && state.phase === "player") finishRoom(state);
-      break;
-    case "salvage":
-      salvage(state, action.targetId);
+    case "command":
+      runCommand(state, action.uid, action.cmd, action.targetId);
+      if (!isOver(state)) checkClear(state);
       break;
     case "endTurn":
       endTurn(state);
       break;
-    case "buyEnergy":
-      buyEnergy(state);
+    case "salvage":
+      if (state.phase !== "salvage" || !state.wrecks.some((w) => w.id === action.targetId)) break;
+      stripWreck(state, action.targetId, RULES.salvageScrap);
+      if (!state.wrecks.length) toReward(state);
       break;
-    case "buyHp":
-      buyHp(state);
+    case "leaveSalvage":
+      if (state.phase === "salvage") toReward(state);
       break;
-    case "equipRocket":
-      if (!state.ownsRocket) break;
-      state.rocketEquipped = action.on;
-      log(state, action.on ? "Rocket equipped (slot A)." : "Rocket stowed.");
+    case "pickReward":
+      if (state.phase !== "reward") break;
+      if (action.id !== "NONE") {
+        if (!state.rewardShown.includes(action.id)) break;
+        if (action.id === "MINE") {
+          if (state.loadoutAd.length >= RULES.adSlots) break;
+          state.loadoutAd.push("MINE");
+          log(state, "AM Mine added to the auto-deploy rack.");
+        } else {
+          addCard(state, action.id);
+          log(state, `${CARDS[action.id].name} added to the deck.`);
+        }
+      }
+      afterReward(state);
+      break;
+    case "decon":
+      if (state.phase !== "decon") break;
+      state.tally.decons += 1;
+      if (!action.deeper) {
+        state.best = Math.max(state.best, state.room);
+        state.phase = "win";
+        log(state, "Decon Bay. Gold light. The rig comes clean. You walk out.");
+        break;
+      }
+      state.contamination = 0;
+      state.seen = { droneRemembers: false, patient: false, yard: false };
+      log(state, "Gold cleansing light. The ivory comes clean. Then you turn around and go back down.");
+      repair(state, jubey(state), RULES.deconHeal, "Decon");
+      toTech(state);
+      break;
+    case "buyEnergy": {
+      if (state.phase !== "tech") break;
+      const row = ENERGY_UP.find((e) => e.from === state.energyCap);
+      if (!row || state.scrap < row.scrap || state.rs < row.rs) break;
+      state.scrap -= row.scrap;
+      state.rs -= row.rs;
+      state.energyCap = row.to;
+      log(state, `Energy cap ${state.energyCap}.`);
+      break;
+    }
+    case "buyHp": {
+      if (state.phase !== "tech") break;
+      const row = HP_UP.find((h) => h.rank === state.hpUpRank + 1);
+      const j = jubey(state);
+      if (!row || !j || state.scrap < row.scrap) break;
+      state.scrap -= row.scrap;
+      state.hpUpRank += 1;
+      state.jubeyMax += 1;
+      j.maxHp = state.jubeyMax;
+      j.hp += 1;
+      log(state, `Jubey max HP ${state.jubeyMax}.`);
+      break;
+    }
+    case "patch": {
+      const j = jubey(state);
+      if (state.phase !== "tech" || !j || j.hp >= j.maxHp || state.scrap < RULES.patchScrap) break;
+      state.scrap -= RULES.patchScrap;
+      repair(state, j, 1, "Hull patch");
+      break;
+    }
+    case "repair": {
+      const j = jubey(state);
+      if (state.phase !== "tech" || !j || j.hp >= j.maxHp || state.cash < RULES.repairCash) break;
+      state.cash -= RULES.repairCash;
+      repair(state, j, RULES.repairHeal, "Paid repair");
+      break;
+    }
+    case "removeCard": {
+      if (state.phase !== "tech" || state.cash < RULES.removeCardCash || state.deck.length <= 5) break;
+      const c = state.deck.find((x) => x.uid === action.uid);
+      if (!c || state.units.some((u) => u.cardUid === c.uid)) break;
+      state.cash -= RULES.removeCardCash;
+      state.deck = state.deck.filter((x) => x.uid !== c.uid);
+      log(state, `${cardName(c.id, c.variant)} cut from the deck.`);
+      break;
+    }
+    case "specialize": {
+      if (state.phase !== "tech" || state.scrap < RULES.variantScrap) break;
+      const c = state.deck.find((x) => x.uid === action.uid);
+      const v = VARIANTS.find((x) => x.id === action.variant);
+      if (!c || !v || v.card !== c.id || c.variant) break;
+      state.scrap -= RULES.variantScrap;
+      c.variant = v.id;
+      const live = state.units.find((u) => u.cardUid === c.uid);
+      if (live) live.variant = v.id;
+      log(state, `${CARDS[c.id].name} rebuilt as ${v.name}.`);
+      break;
+    }
+    case "unequip":
+      if (state.phase !== "tech" || !state.equip.servo) break;
+      state.equip.servo = false;
+      addCard(state, "SERVO");
+      log(state, "Captured Servo Limb unbolted and stowed.");
       break;
     case "nextRoom":
       if (state.phase === "tech") startRoom(state);
       break;
     case "qa":
-      applyQa(state, action.cmd, action.n);
+      applyQa(state, action.cmd, action.n, action.s);
       break;
   }
   return state;
 }
-function applyQa(state: GameState, cmd: string, n?: number) {
-  switch (cmd) {
-    case "scrap":
-      state.scrap += n ?? 5;
+
+// ---------- legal actions (UI hints, bot, fuzz test) ----------
+
+export function legalActions(state: GameState): Action[] {
+  const out: Action[] = [];
+  switch (state.phase) {
+    case "title":
+    case "win":
+    case "dead":
+      out.push({ type: "start" });
       break;
-    case "ammo":
-      state.rocketAmmo += n ?? 3;
+    case "loadout":
+      for (const p of ["lootbox", "mine", "buddy"] as const) out.push({ type: "loadout", pick: p });
       break;
-    case "rocket":
-      state.ownsRocket = true;
-      state.rocketEquipped = true;
-      state.rocketAmmo = Math.max(state.rocketAmmo, n ?? 2);
-      log(state, "QA: rocket equipped.");
+    case "route":
+      out.push({ type: "pickPath", risky: false }, { type: "pickPath", risky: true });
       break;
-    case "threat":
-      state.threat = n ?? 5;
+    case "event":
+      for (const o of eventView(state)?.options ?? []) if (o.enabled) out.push({ type: "event", option: o.id });
       break;
-    case "madness":
-      state.madness = n ?? 20;
+    case "player": {
+      for (const c of state.hand) {
+        if (!canPlay(state, c)) continue;
+        const t = validTargets(state, c);
+        if (t === null) out.push({ type: "play", uid: c.uid });
+        else if (t === "column") for (let s = 0; s < RULES.lanes; s++) out.push({ type: "play", uid: c.uid, slot: s });
+        else for (const id of t) out.push({ type: "play", uid: c.uid, targetId: id });
+      }
+      for (const u of living(state)) {
+        for (const cmd of commandsFor(state, u)) {
+          if (!cmd.enabled) continue;
+          if (cmd.targets) for (const id of cmd.targets) out.push({ type: "command", uid: u.uid, cmd: cmd.cmd, targetId: id });
+          else out.push({ type: "command", uid: u.uid, cmd: cmd.cmd });
+        }
+      }
+      if (ejectedCommand(state)?.enabled) out.push({ type: "command", uid: "ejected", cmd: "retrieve" });
+      out.push({ type: "endTurn" });
       break;
-    case "room":
-      state.room = n ?? 3;
+    }
+    case "salvage":
+      for (const w of state.wrecks) out.push({ type: "salvage", targetId: w.id });
+      out.push({ type: "leaveSalvage" });
       break;
-    case "seed":
-      state.seed = n ?? 1;
-      state.rng = state.seed >>> 0;
+    case "reward":
+      for (const id of state.rewardShown) if (id !== "MINE" || state.loadoutAd.length < RULES.adSlots) out.push({ type: "pickReward", id });
+      out.push({ type: "pickReward", id: "NONE" });
       break;
-    default:
-      log(state, `QA ${cmd}`);
+    case "decon":
+      out.push({ type: "decon", deeper: true }, { type: "decon", deeper: false });
+      break;
+    case "tech": {
+      const j = jubey(state);
+      const e = ENERGY_UP.find((x) => x.from === state.energyCap);
+      const h = HP_UP.find((x) => x.rank === state.hpUpRank + 1);
+      if (e && state.scrap >= e.scrap && state.rs >= e.rs) out.push({ type: "buyEnergy" });
+      if (h && state.scrap >= h.scrap) out.push({ type: "buyHp" });
+      if (j && j.hp < j.maxHp && state.scrap >= RULES.patchScrap) out.push({ type: "patch" });
+      if (j && j.hp < j.maxHp && state.cash >= RULES.repairCash) out.push({ type: "repair" });
+      if (state.scrap >= RULES.variantScrap) {
+        for (const c of state.deck) if (!c.variant) for (const v of VARIANTS) if (v.card === c.id) out.push({ type: "specialize", uid: c.uid, variant: v.id });
+      }
+      if (state.equip.servo) out.push({ type: "unequip", what: "servo" });
+      out.push({ type: "nextRoom" });
+      break;
+    }
   }
+  return out;
 }
+
+// ---------- QA: scenario setup for tests and the console ----------
+
+function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
+  const list = (s ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  switch (cmd) {
+    case "scrap": state.scrap += n ?? 5; break;
+    case "cash": state.cash += n ?? 6; break;
+    case "energy": state.energy = n ?? 9; break;
+    case "threat": state.threat = n ?? 5; break;
+    case "madness": state.madness = n ?? 4; break;
+    case "contamination": state.contamination = n ?? 6; break;
+    case "nightmare": addNightmare(state, n ?? RULES.nightmareThreshold); break;
+    case "heal": repair(state, jubey(state), n ?? 99, "QA"); break;
+    case "room": state.room = n ?? 4; break;
+    case "rocket":
+      if (!state.ownsRocket) {
+        state.ownsRocket = true;
+        giveRocketAmmo(state, 1 + state.rocketAmmo);
+        state.rocketAmmo = 0;
+      }
+      giveRocketAmmo(state, n ?? 0);
+      break;
+    case "fight": {
+      // Drop straight into a clean fight against the listed enemies.
+      state.event = null;
+      state.units = state.units.filter((u) => u.side === "friendly" && u.hp > 0);
+      if (!jubey(state)) spawn(state, "jubey", "friendly", 2);
+      if (!state.room) state.room = 1;
+      state.wrecks = [];
+      state.queue = [];
+      state.pendingSpawn = [];
+      state.extension = false;
+      state.hallwayDone = true;
+      state.hallwayArmed = false;
+      for (const k of list) spawn(state, k as UnitKind, "enemy", freeEnemySlot(state));
+      resetFightState(state);
+      state.minesArmed = n === 1 ? state.minesArmed : 0;
+      openTurnOne(state);
+      break;
+    }
+    case "hand":
+      // "LEECH:queen,GUN" puts those cards straight into the hand.
+      for (const item of list) {
+        const [id, variant] = item.split(":");
+        const c = addCard(state, id as CardId, variant ? { variant } : {});
+        state.hand.push(c);
+      }
+      break;
+    case "ally":
+      for (const k of list) {
+        const [kind, variant] = k.split(":");
+        const u = spawn(state, kind as UnitKind, "friendly", freeFriendSlot(state), { variant });
+        if (kind === "builder") u.timer = variant === "overworked" ? 1 : RULES.builderInterval;
+        if (kind === "walker") u.elevated = true;
+        if (kind === "warframe") Object.assign(u, { inert: true, progress: 0 });
+      }
+      break;
+    case "event":
+      if (s === "patient") openPatient(state);
+      else if (s === "yard") openYard(state);
+      else if (s === "remembers") openRemembers(state);
+      else if (s === "hallway") openHallway(state);
+      else if (s) {
+        openHallway(state);
+        state.event!.data.next = s;
+      }
+      break;
+  }
+  log(state, `QA ${cmd} ${n ?? ""} ${s ?? ""}`.trim());
+}
+
 export function installQa(dispatch: (a: Action) => void, get: () => GameState) {
+  const qa = (cmd: string) => (n?: number, s?: string) => dispatch({ type: "qa", cmd, n, s });
   const api = {
-    seed: (n: number) => dispatch({ type: "qa", cmd: "seed", n }),
-    giveScrap: (n: number) => dispatch({ type: "qa", cmd: "scrap", n }),
-    giveAmmo: (n: number) => dispatch({ type: "qa", cmd: "ammo", n }),
-    giveWeapon: () => dispatch({ type: "qa", cmd: "rocket" }),
-    setThreat: (n: number) => dispatch({ type: "qa", cmd: "threat", n }),
-    setMadness: (n: number) => dispatch({ type: "qa", cmd: "madness", n }),
-    setRoom: (n: number) => dispatch({ type: "qa", cmd: "room", n }),
-    log: () => get().log,
+    giveScrap: qa("scrap"),
+    giveCash: qa("cash"),
+    giveRocket: qa("rocket"),
+    setThreat: qa("threat"),
+    setMadness: qa("madness"),
+    setContamination: qa("contamination"),
+    addNightmare: qa("nightmare"),
+    heal: qa("heal"),
+    hand: (cards: string) => dispatch({ type: "qa", cmd: "hand", s: cards }),
+    ally: (kinds: string) => dispatch({ type: "qa", cmd: "ally", s: kinds }),
+    fight: (kinds: string) => dispatch({ type: "qa", cmd: "fight", s: kinds }),
+    event: (id: string) => dispatch({ type: "qa", cmd: "event", s: id }),
+    start: (seed: number) => dispatch({ type: "start", seed }),
     state: get,
   };
   (window as unknown as { __descent: typeof api }).__descent = api;

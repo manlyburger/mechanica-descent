@@ -3,9 +3,5 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/mechanica-descent/",
-  build: {
-    cssMinify: false,
-    minify: false,
-  },
+  base: "./",
 });

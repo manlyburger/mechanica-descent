@@ -17,6 +17,8 @@ import {
   type UnitKind,
 } from "./data";
 import type { CardInst, GameState, Plan, Unit, Wreck } from "./state";
+import { clampLost, clampjawAct, loseCaptive } from "./capture";
+import { actSpecial, engaged, fighters, onDamaged, onEnemyKilled, planSpecial, teamOrders } from "./pursuit";
 
 // ---------- RNG, log ----------
 
@@ -310,6 +312,7 @@ export function deal(state: GameState, target: Unit | undefined, amount: number,
     target.mood = "playing dead";
     log(state, "Machine Possum drops and plays dead.");
   }
+  onDamaged(state, target);
   const l = target.leech;
   if (l && target.side === "enemy" && !opts.noLeech && !l.firedTurn && target.dmgTurn >= RULES.leechThreshold) extract(state, target);
   if (target.hp <= 0) kill(state, target, opts.attackerUid);
@@ -326,7 +329,10 @@ function extract(state: GameState, host: Unit) {
     if (host.armor > 0) {
       host.armor -= 1;
       log(state, "Salvage Leech stripped armor: -1");
-    } else log(state, "The Leech finds no armor left to strip.");
+    } else {
+      host.weak = true;
+      log(state, "Salvage Leech stripped plating: the host takes +1 from every hit");
+    }
   }
   if (l.variant === "blood") {
     const bite = Math.max(0, 1 - host.armor);
@@ -341,7 +347,7 @@ function extract(state: GameState, host: Unit) {
 }
 
 function leavesWreck(kind: UnitKind): boolean {
-  return ["light", "lvl2", "zombie", "drone", "patient", "powered"].includes(kind);
+  return ["light", "lvl2", "zombie", "drone", "patient", "powered", "needleback", "latchback", "widow", "kilnheart", "bishop", "relay", "prisoner"].includes(kind);
 }
 
 function rollWeaponFinds(state: GameState, dead: Unit) {
@@ -381,6 +387,7 @@ export function kill(state: GameState, u: Unit, killerUid?: string) {
 
 function killEnemy(state: GameState, u: Unit) {
   state.tally.kills += 1;
+  const noWreck = onEnemyKilled(state, u) || u.kind === "capsule";
   state.lastKilled = u.kind === "patient" ? state.lastKilled : u.kind;
   if (u.kind === "infested") {
     log(state, "Infested wreck gives nothing.");
@@ -391,13 +398,13 @@ function killEnemy(state: GameState, u: Unit) {
     log(state, `+${RULES.rifleCash} Cash off the body. +${RULES.rifleMadness} Madness.`);
   } else {
     const rsP = RULES.rsDrop * (state.pathRisky ? RULES.riskyRsMult : 1);
-    if (u.kind !== "drone" && !u.temp && chance(state, rsP)) {
+    if (u.kind !== "drone" && u.kind !== "capsule" && u.kind !== "relay" && !u.temp && chance(state, rsP)) {
       state.rs += 1;
       log(state, "+1 Reactor Salvage.");
     }
     if (!u.temp) rollWeaponFinds(state, u);
   }
-  if (leavesWreck(u.kind) && !u.temp) addWreck(state, { kind: u.kind, side: "enemy", value: 1 });
+  if (leavesWreck(u.kind) && !u.temp && !noWreck) addWreck(state, { kind: u.kind, side: "enemy", value: 1 });
 
   // Machine Possum: one pull per corpse, capped per encounter.
   for (const p of allies(state, "possum")) {
@@ -430,6 +437,8 @@ function killEnemy(state: GameState, u: Unit) {
 
 function killFriendly(state: GameState, u: Unit, killerUid?: string) {
   if (u.kind === "beacon") log(state, "THREAT BEACON DESTROYED. The signal cuts out with a shriek.");
+  if (u.kind === "clampjaw") clampLost(state, u.uid);
+  if (u.kind === "clampjaw" || u.kind === "pod") loseCaptive(state, u.uid, `the ${label(u.kind)} is destroyed`);
   if (u.leech && !u.leech.temp) toDiscard(state, u.leech.cardUid);
   if (!is(u, "machine")) {
     if (!u.temp) toDiscard(state, u.cardUid);
@@ -481,7 +490,7 @@ function killFriendly(state: GameState, u: Unit, killerUid?: string) {
   const reflex = state.armed.find((c) => c.id === "REFLEX");
   const printed = UNITS[u.kind].atk;
   if (reflex && !state.reflexUsed && printed > 0) {
-    const tgt = living(state, "enemy").sort((a, b) => Math.abs(a.slot - u.slot) - Math.abs(b.slot - u.slot))[0];
+    const tgt = fighters(state).sort((a, b) => Math.abs(a.slot - u.slot) - Math.abs(b.slot - u.slot))[0];
     if (tgt) {
       state.reflexUsed = true;
       state.madness += 1;
@@ -538,7 +547,7 @@ export function pickTarget(state: GameState, u: Unit): Unit | undefined {
   return nearest(c, u.slot);
 }
 
-function attackPlan(state: GameState, u: Unit, target?: Unit): Plan {
+export function attackPlan(state: GameState, u: Unit, target?: Unit): Plan {
   const tgt = target ?? pickTarget(state, u);
   if (u.missiles > 0 && u.lock >= 2) return { type: "missile", targetUid: tgt?.uid, dmg: u.kind === "lvl2" ? 6 : 3 };
   return { type: "attack", targetUid: tgt?.uid, dmg: u.atk };
@@ -548,6 +557,8 @@ export function planEnemy(state: GameState, u: Unit): Plan {
   if (u.foam || u.stunned > 0) return { type: "disabled" };
   if ((u.sealed ?? 0) > 0) return u.kind === "zombie" ? { type: "break", note: "breaking the seal" } : { type: "disabled" };
   if ((u.pacified ?? 0) > 0) return { type: "hold", note: "badge accepted" };
+  const special = planSpecial(state, u);
+  if (special) return special;
   if (u.leech) {
     if (is(u, "leech_purge") && chance(state, RULES.purgeChanceHeavy)) return { type: "purge", note: "purging the Leech" };
     if (u.kind === "light" && chance(state, RULES.tearChancePiloted)) return { type: "tear", note: "tearing off plating" };
@@ -572,6 +583,7 @@ export function planEnemy(state: GameState, u: Unit): Plan {
 
 export function planEnemies(state: GameState) {
   for (const u of living(state, "enemy")) u.plan = planEnemy(state, u);
+  teamOrders(state);
 }
 
 /** Cover and guards step in front of a targeted ally. */
@@ -639,6 +651,8 @@ export function enemyAct(state: GameState, u: Unit) {
     log(state, `${name} idles, reading your badge.`);
     return;
   }
+  if (actSpecial(state, u, plan)) return;
+  if (u.hp <= 0 || !state.units.includes(u)) return;
   switch (plan.type) {
     case "purge": {
       const l = u.leech;
@@ -674,7 +688,7 @@ export function enemyAct(state: GameState, u: Unit) {
       const w = state.wrecks.find((x) => x.pile) ?? state.wrecks[0];
       if (w) {
         takeWreck(state, w.id);
-        log(state, `Drone drags off ${w.pile ? "the spilled cargo" : "a " + label(w.kind) + " wreck"} before you can.`);
+        log(state, `${name} drags off ${w.pile ? "the spilled cargo" : "a " + label(w.kind) + " wreck"} before you can.`);
         return;
       }
       break;
@@ -701,6 +715,12 @@ export function enemyAct(state: GameState, u: Unit) {
       break;
   }
 
+  // Melee is a matter of range: no blow lands before the unit is Engaged.
+  if (is(u, "melee") && !engaged(u)) {
+    u.prox = Math.min(RULES.proxEngaged, (u.prox ?? 0) + 1);
+    log(state, `${name} closes.`);
+    return;
+  }
   // Attack (also the fallback when a planned counter is no longer possible).
   let tgt = unit(state, plan.targetUid);
   if (!tgt || tgt.side !== "friendly" || !targetable(state, u).includes(tgt)) tgt = pickTarget(state, u);
@@ -722,7 +742,11 @@ export function enemyAct(state: GameState, u: Unit) {
     u.lock = 0;
     u.missiles -= 1;
   }
-  if (!chance(state, enemyHitChance(state, u))) {
+  const marked = state.teamMark && is(u, "team") && u.kind !== "needleback";
+  if (marked) {
+    state.teamMark = false;
+    log(state, `${name} fires on Needleback's mark.`);
+  } else if (!chance(state, enemyHitChance(state, u))) {
     log(state, `${name}${missile ? " missile" : ""} misses.`);
     return;
   }
@@ -751,7 +775,7 @@ function machineAttack(state: GameState, a: Unit, tgt: Unit | undefined, dmg: nu
   else log(state, `${label(a.kind)} fires wide.`);
 }
 function nearestEnemy(state: GameState, a: Unit): Unit | undefined {
-  return nearest(living(state, "enemy"), a.slot);
+  return nearest(fighters(state), a.slot);
 }
 
 export function damagedAllies(state: GameState, exceptUid?: string): Unit[] {
@@ -947,6 +971,12 @@ export function allyAct(state: GameState, a: Unit) {
     case "builder":
       builderAct(state, a);
       break;
+    case "clampjaw":
+      clampjawAct(state, a);
+      break;
+    case "prisoner":
+      machineAttack(state, a, nearestEnemy(state, a), a.atk);
+      break;
     case "shepherd":
       shepherdAct(state, a);
       break;
@@ -958,7 +988,7 @@ export function allyAct(state: GameState, a: Unit) {
         a.scouting = false;
         log(state, state.queue.length ? `Ceiling Walker reports inbound: ${state.queue.map(label).join(", ")}.` : "Ceiling Walker reports nothing else inbound.");
       } else {
-        const weakest = living(state, "enemy").sort((x, y) => x.hp - y.hp)[0];
+        const weakest = fighters(state).sort((x, y) => x.hp - y.hp)[0];
         machineAttack(state, a, weakest, a.atk);
       }
       break;

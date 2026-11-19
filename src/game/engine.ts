@@ -10,6 +10,7 @@ import {
   REWARD_POOL,
   RULES,
   STARTING_DECK,
+  UNITS,
   VARIANTS,
   cardName,
   depthFor,
@@ -45,13 +46,21 @@ import {
   tripMine,
   is,
 } from "./core";
-import { canPlay, commandsFor, ejectedCommand, playCard, runCommand, validTargets } from "./cards";
+import { canPlay, commandsFor, ejectedCommand, playCard, runCommand, tapCommands, validTargets } from "./cards";
+import { captiveOf, dismantleCaptive, gatherCustody, loseCaptive, podUpkeep } from "./capture";
+import { hostiles } from "./pursuit";
+import { openBrawler, openCustody, openPod, openPrisoner, openRecovery, openRelay, openTalk } from "./story";
+import { advanceEpisode, deploy, enterRoom, introduce, pilotByRole, pursuing, radio } from "./team";
+import { CALLSIGN, type Role } from "./team-text";
 import { eventView, openEvent, openHallway, openPatient, openRemembers, openYard, resolveEvent, rollChoice, type Flow } from "./events";
 import { createGame, type Action, type GameState, type Unit } from "./state";
 
 export { SAVE_VERSION, createGame } from "./state";
 export type { Action, CardInst, GameState, Unit, Wreck, Plan } from "./state";
-export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, type Command } from "./cards";
+export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, tapCommands, type Command } from "./cards";
+export { integrityBand, captiveOf, whyNotRestrainable } from "./capture";
+export { teamSummary, pilotRoster, coordination, pursuing } from "./team";
+export { PROX_NAMES, engaged } from "./pursuit";
 export { eventView, type EventView, type Option } from "./events";
 export { living, jubey, enemyHitChance, allies } from "./core";
 
@@ -102,6 +111,7 @@ function startRoom(state: GameState) {
   state.extension = false;
   state.energy = state.energyCap;
   state.nextPack = rollPack(state);
+  state.teamEpisode = enterRoom(state);
   state.phase = "route";
   log(state, `— Room ${state.room} path —`);
   if (state.room > RULES.deconEvery) addContamination(state, RULES.contamPerLegRoom, "The deep halls get on the rig.");
@@ -109,9 +119,57 @@ function startRoom(state: GameState) {
 
 /** Walk the hall: each possible event gets one chance, then the fight. */
 function continueHall(state: GameState) {
-  while (state.hallStage < 5) {
+  while (state.hallStage < 8) {
     const stage = state.hallStage++;
     const deep = state.room >= 2;
+    const t = state.team;
+    if (stage === 5) {
+      // Relay Section R-8: one authored beat per room, driven by real pilot state.
+      const ep = state.teamEpisode;
+      state.teamEpisode = 0;
+      if (t.pursuit !== "dormant" && !pursuing(state)) continue;
+      if (state.room < t.truceUntil) continue;
+      if (t.podEscaped && pursuing(state)) return openPod(state);
+      if (pursuing(state) && !t.talked && t.leverage >= RULES.negotiateAt && pilotByRole(state, "bishop").status !== "captured") return openTalk(state);
+      if (!ep) continue;
+      if (ep === 1) {
+        introduce(state);
+        // The scout looks like an ordinary patrol: it takes a Light's place in the pack.
+        if (deploy(state, "needleback")) {
+          const i = state.nextPack.indexOf("light");
+          if (i >= 0) state.nextPack.splice(i, 1);
+        }
+        advanceEpisode(state);
+        continue;
+      }
+      if (ep === 2) {
+        if (pilotByRole(state, "widow").status === "active") return openRecovery(state);
+        advanceEpisode(state, 0);
+        state.teamEpisode = 3;
+        state.hallStage -= 1;
+        continue;
+      }
+      if (ep === 3) {
+        if (pilotByRole(state, "latchback").status === "active") return openBrawler(state);
+        advanceEpisode(state, 0);
+        state.teamEpisode = 4;
+        state.hallStage -= 1;
+        continue;
+      }
+      if (ep === 4) {
+        introduce(state);
+        if (deploy(state, "kilnheart")) log(state, "The floor is shaking in a slow rhythm. R-8 has sent its furnace.");
+        advanceEpisode(state);
+        continue;
+      }
+      if (pilotByRole(state, "bishop").status === "active") return openRelay(state);
+      continue;
+    }
+    if (stage === 6) {
+      if (state.room >= RULES.prisonerFromRoom && !state.seen.prisoner && chance(state, RULES.prisonerChance)) return openPrisoner(state);
+      continue;
+    }
+    if (stage === 7) continue;
     if (stage === 0) {
       const b = allies(state, "builder").find((x) => !x.temp);
       if (b && !state.seen.droneRemembers && chance(state, RULES.droneRemembersChance)) return openRemembers(state);
@@ -183,6 +241,44 @@ function spawnPack(state: GameState) {
       log(state, "The Patient Machine is here, weapons up, screen still asking for repair.");
     } else log(state, `${label(k)} followed you in.`);
   }
+  // R-8: spawned from persistent pilot state, never as anonymous extras.
+  const team = state.pendingTeam;
+  state.pendingTeam = [];
+  for (const m of team) {
+    const slot = freeEnemySlot(state);
+    if (slot < 0) continue;
+    if (m.kind === "capsule") {
+      const pod = spawn(state, "capsule", "enemy", slot, { pilot: m.pilot, role: "bishop", hp: RULES.bishopPodHp, maxHp: RULES.bishopPodHp, exitIn: state.podStart === "late" ? 1 : 2, flying: state.podStart !== "grounded", stunned: state.podStart === "grounded" ? 1 : 0, note: state.podStart === "grounded" ? "command pod, grounded" : "flying command pod" });
+      state.podStart = "";
+      log(state, `Bishop's command pod is ${pod.flying ? "overhead" : "down and skidding"} in column ${slot + 1}.`);
+      continue;
+    }
+    const u = spawn(state, m.kind, "enemy", slot, { pilot: m.pilot, replacement: m.replacement });
+    if (m.replacement) {
+      u.maxHp = Math.max(2, u.maxHp - RULES.replacementHpLoss);
+      u.hp = u.maxHp;
+    }
+    if (m.kind === "bishop" && state.interceptBishop) {
+      state.interceptBishop = false;
+      u.hp = Math.max(4, u.hp - 2);
+    }
+    const role = state.team.pilots.find((p) => p.id === m.pilot)?.role as Role;
+    log(state, `${label(u.kind)} in column ${slot + 1}${m.replacement ? `: ${CALLSIGN[role]}'s pilot, in a replacement frame` : ""}.`);
+    if (m.kind === "needleback" && !m.replacement) radio(state, "ep1-contact");
+  }
+  if (team.length && state.team.knowsPlayer) {
+    state.team.knowsPlayer = false;
+    state.teamScouted = true;
+  }
+  for (const u of living(state, "enemy")) if (is(u, "melee") && u.prox === undefined) u.prox = UNITS[u.kind].startProx ?? 0;
+  if (state.intel.weak) {
+    state.intel.weak = false;
+    const tough = living(state, "enemy").sort((a, b) => b.maxHp - a.maxHp)[0];
+    if (tough) {
+      tough.weak = true;
+      log(state, `Your records were right about the ${label(tough.kind)}: it takes +1 from every hit.`);
+    }
+  }
   const drones = Math.min(RULES.threatDroneMax, Math.floor(state.threat / RULES.threatPerDrone));
   if (drones > 0) log(state, `Threat ${state.threat}: ${drones} Drone${drones > 1 ? "s" : ""} inbound.`);
   const shadow = state.pathRisky ? RULES.riskyDrones : 0;
@@ -210,6 +306,10 @@ function resetFightState(state: GameState) {
   state.redmouth = null;
   state.bonusDraw = 0;
   state.ejected = null;
+  state.tap = null;
+  state.teamOrder = null;
+  state.teamMark = false;
+  state.pinned = [];
   state.badge = { turns: 0, flagged: false, hostile: false };
   state.minesArmed = state.loadoutAd.filter((c) => c === "MINE").length;
   if (state.minesArmed > 0) log(state, `AM Mine deploys itself by the door (${state.minesArmed}).`);
@@ -234,6 +334,7 @@ function startExtension(state: GameState, kinds: UnitKind[], setup?: (state: Gam
   state.wrecks = state.wrecks.filter((w) => w.free);
   state.queue = [];
   const foes = kinds.map((k) => spawn(state, k, "enemy", Math.max(0, freeEnemySlot(state))));
+  for (const f of foes) if (is(f, "melee")) f.prox = UNITS[f.kind].startProx ?? 0;
   resetFightState(state);
   setup?.(state, foes);
   for (const f of foes) log(state, `${label(f.kind)}${f.note ? ` (${f.note})` : ""} in column ${f.slot + 1}.`);
@@ -250,6 +351,11 @@ function openTurnOne(state: GameState) {
     if (isOver(state)) return;
   }
   beginPlayerTurn(state);
+  if (state.teamScouted && state.phase === "player") {
+    state.teamScouted = false;
+    state.accModEnemy += 1;
+    log(state, "They knew where you would be. R-8 opens this fight with sharper aim.");
+  }
   if (state.firstStrike && state.phase === "player") {
     state.firstStrike = false;
     state.energy += 1;
@@ -307,6 +413,18 @@ function beginPlayerTurn(state: GameState) {
       log(state, "The Possessed Builder turns toward a damaged enemy and starts warming its welder.");
     }
   }
+  for (const u of living(state)) {
+    if (u.kind === "prisoner" && u.side === "enemy" && u.hp < u.maxHp && !u.cap) {
+      u.hp = Math.min(u.maxHp, u.hp + RULES.prisonerRegen);
+      log(state, "… [repeated internal welding clicks] The Prisoner knits a plate back into place.");
+    }
+    if (u.kind === "prisoner" && u.side === "friendly" && u.note === "unstable" && !u.malf && state.turn === 1 && chance(state, 0.25)) {
+      u.malf = "hostile";
+      log(state, "…? The Prisoner's control loop slips. It is looking at your own machines.");
+    }
+  }
+  podUpkeep(state);
+  if (isOver(state)) return;
   drawCards(state, RULES.handSize - state.hand.length + state.bonusDraw);
   state.bonusDraw = 0;
   planEnemies(state);
@@ -337,6 +455,7 @@ function endFight(state: GameState) {
   for (const u of state.units) {
     u.foam = false;
     u.sealed = 0;
+    u.apprehend = undefined;
     u.leech = undefined;
     u.malf = undefined;
     u.ward = 0;
@@ -368,7 +487,7 @@ function endFight(state: GameState) {
       u.roomsLeft -= 1;
       if (u.roomsLeft <= 0) {
         u.hp = 0;
-        log(state, "The Patient Machine stops walking. Its screen says DONE and goes dark.");
+        log(state, u.kind === "prisoner" ? "… The Prisoner stops, mid-step, and does not start again." : "The Patient Machine stops walking. Its screen says DONE and goes dark.");
       }
     }
   }
@@ -387,10 +506,20 @@ function endFight(state: GameState) {
 
 function checkClear(state: GameState) {
   if (state.phase !== "player") return;
-  if (living(state, "enemy").length || state.queue.length) return;
+  if (hostiles(state).length || state.queue.length) return;
   const wasExtension = state.extension;
   log(state, wasExtension ? "The hallway is quiet." : `Room ${state.room} clear.`);
+  state.custody = gatherCustody(state);
+  for (const pin of state.pinned) {
+    state.custody.push({ id: "pin-" + pin.pilot, kind: "capsule", pilot: pin.pilot, person: true, label: `${CALLSIGN[pin.role as Role] ?? "The"}'s pilot, pinned in the wreck`, bands: 0, hp: 1, tapped: true });
+  }
+  state.pinned = [];
   endFight(state);
+  if (state.custody.length) return openCustody(state);
+  afterFight(state, wasExtension);
+}
+
+function afterFight(state: GameState, wasExtension: boolean) {
   if (!wasExtension) {
     state.bonusEnergy = 0;
     state.extraCrazy = 0;
@@ -444,11 +573,18 @@ function afterReward(state: GameState) {
 
 function toTech(state: GameState) {
   state.phase = "tech";
+  if (state.intel.cache > 0) addScrap(state, state.intel.cache, "The parts locker your records pointed to");
+  else if (state.intel.cache < 0) {
+    state.threat += 1;
+    log(state, `The locker your records pointed to is a sensor plate with a door painted on it. Threat ${state.threat}.`);
+  }
+  state.intel.cache = 0;
+  state.intel.questionable = false;
   if (RULES.restHeal > 0) repair(state, jubey(state), RULES.restHeal, "Rest");
   log(state, "Tech Stop.");
 }
 
-const flow: Flow = { continueHall, finishRoom, startExtension };
+const flow: Flow = { continueHall, finishRoom, startExtension, afterCustody: (state) => afterFight(state, state.extension) };
 
 // ---------- turn ----------
 
@@ -488,6 +624,12 @@ function endTurn(state: GameState) {
         state.threat += 1;
         log(state, `Security verification: CREDENTIAL FLAGGED. Threat ${state.threat}.`);
       } else log(state, "Security verification: the badge expires quietly.");
+    }
+  }
+  for (const u of living(state, "enemy")) {
+    if ((u.wedge ?? 0) > 0) {
+      u.wedge! -= 1;
+      if (u.wedge === 0) log(state, `The Cockpit Wedge works loose from the ${label(u.kind)}.`);
     }
   }
   if (state.stripped > 0) state.stripped -= 1;
@@ -596,7 +738,7 @@ export function reduce(prev: GameState, action: Action): GameState {
         break;
       }
       state.contamination = 0;
-      state.seen = { droneRemembers: false, patient: false, yard: false };
+      state.seen = { droneRemembers: false, patient: false, yard: false, prisoner: false };
       log(state, "Gold cleansing light. The ivory comes clean. Then you turn around and go back down.");
       repair(state, jubey(state), RULES.deconHeal, "Decon");
       toTech(state);
@@ -665,6 +807,12 @@ export function reduce(prev: GameState, action: Action): GameState {
       addCard(state, "SERVO");
       log(state, "Captured Servo Limb unbolted and stowed.");
       break;
+    case "captive": {
+      if (state.phase !== "tech" || !captiveOf(state, action.holder)) break;
+      if (action.what === "dismantle") dismantleCaptive(state, action.holder);
+      else loseCaptive(state, action.holder, "you opened it", true);
+      break;
+    }
     case "nextRoom":
       if (state.phase === "tech") startRoom(state);
       break;
@@ -695,6 +843,10 @@ export function legalActions(state: GameState): Action[] {
       for (const o of eventView(state)?.options ?? []) if (o.enabled) out.push({ type: "event", option: o.id });
       break;
     case "player": {
+      if (state.tap) {
+        for (const c of tapCommands(state)) out.push({ type: "command", uid: "tap", cmd: c.cmd });
+        break;
+      }
       for (const c of state.hand) {
         if (!canPlay(state, c)) continue;
         const t = validTargets(state, c);
@@ -736,6 +888,10 @@ export function legalActions(state: GameState): Action[] {
         for (const c of state.deck) if (!c.variant) for (const v of VARIANTS) if (v.card === c.id) out.push({ type: "specialize", uid: c.uid, variant: v.id });
       }
       if (state.equip.servo) out.push({ type: "unequip", what: "servo" });
+      for (const c of state.captives) {
+        out.push({ type: "captive", holder: c.holder, what: "release" });
+        if (!c.pilot) out.push({ type: "captive", holder: c.holder, what: "dismantle" });
+      }
       out.push({ type: "nextRoom" });
       break;
     }
@@ -778,6 +934,9 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
       state.hallwayDone = true;
       state.hallwayArmed = false;
       for (const k of list) spawn(state, k as UnitKind, "enemy", freeEnemySlot(state));
+      for (const m of state.pendingTeam) spawn(state, m.kind, "enemy", freeEnemySlot(state), { pilot: m.pilot, replacement: m.replacement });
+      state.pendingTeam = [];
+      for (const u of living(state, "enemy")) if (is(u, "melee") && u.prox === undefined) u.prox = UNITS[u.kind].startProx ?? 0;
       resetFightState(state);
       state.minesArmed = n === 1 ? state.minesArmed : 0;
       openTurnOne(state);
@@ -797,11 +956,23 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
         const u = spawn(state, kind as UnitKind, "friendly", freeFriendSlot(state), { variant });
         if (kind === "builder") u.timer = variant === "overworked" ? 1 : RULES.builderInterval;
         if (kind === "walker") u.elevated = true;
+        if (kind === "pod") u.podIntegrity = 100;
         if (kind === "warframe") Object.assign(u, { inert: true, progress: 0 });
       }
       break;
+    case "team":
+      // "needleback,bishop" deploys those R-8 mechs into the next qa fight.
+      introduce(state);
+      for (const r of list) deploy(state, r as Role);
+      break;
     case "event":
-      if (s === "patient") openPatient(state);
+      if (s === "prisoner") openPrisoner(state);
+      else if (s === "r8-recovery") openRecovery(state);
+      else if (s === "r8-brawler") openBrawler(state);
+      else if (s === "r8-relay") openRelay(state);
+      else if (s === "r8-pod") openPod(state);
+      else if (s === "r8-talk") openTalk(state);
+      else if (s === "patient") openPatient(state);
       else if (s === "yard") openYard(state);
       else if (s === "remembers") openRemembers(state);
       else if (s === "hallway") openHallway(state);
@@ -829,6 +1000,8 @@ export function installQa(dispatch: (a: Action) => void, get: () => GameState) {
     ally: (kinds: string) => dispatch({ type: "qa", cmd: "ally", s: kinds }),
     fight: (kinds: string) => dispatch({ type: "qa", cmd: "fight", s: kinds }),
     event: (id: string) => dispatch({ type: "qa", cmd: "event", s: id }),
+    team: (roles: string) => dispatch({ type: "qa", cmd: "team", s: roles }),
+    act: (a: Action) => dispatch(a),
     start: (seed: number) => dispatch({ type: "start", seed }),
     state: get,
   };

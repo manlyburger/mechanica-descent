@@ -16,7 +16,9 @@ const styles: [string, BotStyle][] = [
 ];
 const pct = (n: number) => ((100 * n) / N).toFixed(1) + "%";
 for (const [name, style] of styles) {
-  let out = 0, first = 0, depth = 0, r12 = 0, scrap = 0, machines = 0;
+  let out = 0, first = 0, depth = 0, r12 = 0, scrap = 0, machines = 0, met = 0;
+  const ends: Record<string, number> = {};
+  const fates: Record<string, number> = {};
   for (let i = 1; i <= N; i++) {
     const r = playRun(i * 7919 + 13, style);
     const f = r.final;
@@ -24,10 +26,15 @@ for (const [name, style] of styles) {
     if (f.tally.decons >= 1 || f.room > D) first++;
     if (f.room > 2 || r.win) r12++;
     depth += f.room;
+    if (f.team.introduced) met++;
+    ends[f.team.pursuit] = (ends[f.team.pursuit] ?? 0) + 1;
+    for (const p of f.team.pilots) fates[p.status] = (fates[p.status] ?? 0) + 1;
     scrap += f.tally.salvaged;
     machines += f.deck.filter((c) => ["BUILDER", "JACK", "SHEPHERD", "WALKER", "POSSUM", "WARFRAME"].includes(c.id)).length;
   }
   console.log(`\n${name}`);
   console.log(`  past room 2 ${pct(r12)}   reached first Decon ${pct(first)}   walked out clean ${pct(out)}   avg final room ${(depth / N).toFixed(1)}`);
+  console.log(`  R-8 met ${pct(met)}   pursuit at end: ${Object.entries(ends).map(([k, v]) => `${k} ${pct(v)}`).join(", ")}`);
+  console.log(`  pilots per run: ${Object.entries(fates).map(([k, v]) => `${k} ${(v / N).toFixed(2)}`).join(", ")}`);
   console.log(`  wrecks stripped/run ${(scrap / N).toFixed(2)}   machine cards in deck at end ${(machines / N).toFixed(2)}`);
 }

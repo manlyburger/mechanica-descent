@@ -27,6 +27,9 @@ import {
   unit,
 } from "./core";
 import type { CardInst, GameState, Unit } from "./state";
+import { applyBand, bandTargets, canApprehend, captiveOf, dismantleCaptive, heldBy, loseCaptive, podFits, resolveTap, secured, tapSources, transferCaptive, vacantPod, type TapChoice } from "./capture";
+import { stabilize } from "./pursuit";
+import { setPilot } from "./team";
 
 // ---------- targets ----------
 
@@ -41,7 +44,14 @@ export function validTargets(state: GameState, card: CardInst): string[] | "colu
     case "column":
       return "column";
     case "enemy":
-      return foes.map((u) => u.uid);
+      // A flying command pod is out of reach of crane and fist.
+      return foes.filter((u) => !(def.melee && u.flying)).map((u) => u.uid);
+    case "band":
+      return bandTargets(state).map((u) => u.uid);
+    case "cockpit":
+      return foes.filter((u) => is(u, "piloted") && !!(u.pilot || !is(u, "team")) && !(u.wedge ?? 0)).map((u) => u.uid);
+    case "tap":
+      return tapSources(state);
     case "enemyMech":
       if (card.variant === "symbiotic") return mine.filter((u) => is(u, "machine") && !u.leech).map((u) => u.uid);
       return foes.filter((u) => is(u, "mechanical") && !u.leech).map((u) => u.uid);
@@ -71,6 +81,7 @@ export function whyNot(state: GameState, card: CardInst): string | null {
   if (card.id === "HALLWAY" && (state.hallwayArmed || state.extension)) return "the hall is already wrong";
   if (card.id === "BADGE" && (state.badge.flagged || state.badge.turns > 0)) return state.badge.flagged ? "badge flagged in this room" : "badge still active";
   if (card.id === "REDMOUTH" && state.redmouth) return "already loaded";
+  if (state.tap) return "finish the Memory Tap first";
   return null;
 }
 export function canPlay(state: GameState, card: CardInst): boolean {
@@ -131,6 +142,16 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
   }
   if (valid === "column" && (slot === undefined || slot < 0 || slot >= RULES.lanes)) return;
 
+  // Cover the Commander: the Brawler takes one aimed shot meant for the Bishop.
+  if (target && target.side === "enemy" && def.target === "enemy") {
+    const guard = unit(state, target.guardBy);
+    if (guard && !secured(guard)) {
+      log(state, `Latchback Brawler steps into the line of fire meant for the ${label(target.kind)}.`);
+      target.guardBy = undefined;
+      target = guard;
+    }
+  }
+
   payEnergy(state, def.cost, !!def.tech);
   state.scrap -= def.scrap ?? 0;
   state.hand.splice(idx, 1);
@@ -179,13 +200,17 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
       if (target!.hp > 0) {
         target!.stunned = 1;
         log(state, `${label(target!.kind)} stunned.`);
+        if (is(target!, "melee") && (target!.prox ?? 0) > 0) {
+          target!.prox = (target!.prox ?? 0) - 1;
+          log(state, `The hook throws it back a step: ${["DISTANT", "CLOSING", "MELEE READY"][target!.prox]}.`);
+        }
       }
       servoMalfunction(state, bonus > 0);
       break;
     }
     case "CRANE": {
       const bonus = servoBonus(state, def);
-      const hits = living(state, "enemy").filter((u) => Math.abs(u.slot - slot!) <= 1);
+      const hits = living(state, "enemy").filter((u) => Math.abs(u.slot - slot!) <= 1 && !u.flying);
       if (!hits.length) log(state, "Crane Smash hits empty air.");
       let sharper = 0;
       for (const t of hits) {
@@ -253,6 +278,8 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
     case "WALKER":
     case "JACK":
     case "WARFRAME":
+    case "CLAMPJAW":
+    case "POD":
     case "GUNNEST":
     case "BULKHEAD":
     case "BEACON": {
@@ -261,6 +288,7 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
       log(state, `${name} deployed in column ${u.slot + 1}.`);
       if (u.kind === "builder") u.timer = card.variant === "overworked" ? 1 : RULES.builderInterval;
       if (u.kind === "walker") u.elevated = true;
+      if (u.kind === "pod") u.podIntegrity = 100;
       if (u.kind === "gunnest" || u.kind === "bulkhead" || u.kind === "beacon") u.temp = false;
       if (u.kind === "warframe") {
         u.inert = true;
@@ -330,6 +358,7 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
       t.foam = true;
       t.mood = "foamed";
       log(state, `Industrial foam swallows ${label(t.kind)}.`);
+      stabilize(state, t);
       break;
     }
     case "COFFIN": {
@@ -338,6 +367,7 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
       t.sealed = heavy ? 1 : RULES.coffinActions;
       t.mood = "sealed";
       log(state, `Sealant hardens around ${label(t.kind)}: ${t.sealed} action${t.sealed > 1 ? "s" : ""}.`);
+      stabilize(state, t);
       break;
     }
     case "BADGE": {
@@ -351,6 +381,21 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
       log(state, drones.length ? "You hold up the badge. The Drones lower their emitters." : "You hold up the badge. Nothing here cares.");
       break;
     }
+    case "LOCKBANDS":
+      applyBand(state, target!);
+      break;
+    case "WEDGE": {
+      const t = target!;
+      t.wedge = RULES.wedgeTurns;
+      log(state, `Cockpit Wedge hammered into the ${label(t.kind)}'s release track. COCKPIT EJECTION BLOCKED for ${RULES.wedgeTurns} turns. It can still fight and still transmit.`);
+      if (t.kind === "kilnheart" && (t.heat ?? 0) >= 2) log(state, "REACTOR INSTABILITY DETECTED. PILOT STILL INSIDE. DETONATION RISK: HIGH.");
+      if (t.ejecting) t.plan = { type: "eject", note: "EJECTION BLOCKED" };
+      break;
+    }
+    case "MEMTAP":
+      state.tap = target!.uid;
+      log(state, `Memory Tap connected to ${target!.side === "enemy" ? "the " + label(target!.kind) : captiveOf(state, target!.uid)?.label ?? "the captive"}. Choose what to read.`);
+      break;
     default:
       break;
   }
@@ -381,6 +426,8 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
 
   if (u.side === "enemy") {
     if (u.leech && !u.leech.temp) add("risky", "Risky Extraction", `+${RULES.riskyExtractScrap} Scrap, 1 damage to host. The Leech is spent for this fight.`);
+    if ((u.wedge ?? 0) > 0) add("unwedge", "Remove the Wedge", `${RULES.wedgeRemoveEnergy} Energy. The cockpit can open and eject again.`, en(RULES.wedgeRemoveEnergy));
+    if (u.cap) add("unbind", "Release it", "Take the restraints off. It is free again.");
     return out;
   }
   if (u.malf && state.equip.hand && !state.handUsed) add("override", "Manual Override", "Cancel the malfunction and take control. The machine takes 1 after it acts.");
@@ -400,6 +447,28 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
         add("order-sort", "Next job: Sort scrap", `+${RULES.builderSort} Scrap.`, u.order !== "sort" && (u.sorted ?? 0) < RULES.builderSortCap);
       }
       if (allies(state, "warframe").some((w) => w.inert)) add("order-commission", "Commission Warframe", "Spend the next maintenance job on the frame.", u.order !== "commission");
+      break;
+    }
+    case "clampjaw": {
+      const held = heldBy(state, u);
+      const cap = captiveOf(state, u.uid);
+      const pod = vacantPod(state);
+      if (!held && !cap) add("apprehend", "Apprehend", `Grapple one machine at ${RULES.captureHp} HP or less, or a disabled one. It locks on the following action.`, true, living(state, "enemy").filter(canApprehend).map((x) => x.uid));
+      if (cap) add("transfer", "Transfer to the Pod", pod ? "Hand the captive over. The Clampjaw is free to capture again." : "No vacant Pod.", !!pod && podFits(cap.kind, !!cap.pilot && cap.kind !== "capsule"));
+      if (cap) add("letgo", "Release the captive", "Open the clamps on purpose.");
+      if (held) add("letgo", "Let go", "Open the clamps. Lockbands, if any, stay on.");
+      break;
+    }
+    case "pod": {
+      const cap = captiveOf(state, u.uid);
+      if (!cap) {
+        const fits = living(state, "enemy").filter((x) => secured(x) && podFits(x.kind, false)).map((x) => x.uid);
+        add("contain", "Contain", "Move one secured capsule, Drone or small machine into the Pod.", true, fits);
+      } else {
+        add("power", u.powerOff ? "Restore power" : "Cut power", u.powerOff ? "The Pod draws its upkeep again." : "Stop paying upkeep. The seal weakens every cycle.");
+        if (!cap.pilot) add("dismantle", "Dismantle the captive", "Break it down for Scrap. Frees the Pod.");
+        add("letgo", "Release the captive", "Open the Pod on purpose.");
+      }
       break;
     }
     case "bulkhead":
@@ -432,6 +501,16 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
   return out;
 }
 
+export function tapCommands(state: GameState): Command[] {
+  if (state.phase !== "player" || !state.tap) return [];
+  const mk = (cmd: string, name: string, detail: string): Command => ({ uid: "tap", cmd, label: name, detail, enabled: true });
+  return [
+    mk("hazard", "Hazard Scan", "What is in the next room. A clean read also lets you read the next wrong corridor."),
+    mk("weak", "Weakness Analysis", "One machine in the next fight takes +1 from every hit."),
+    mk("cache", "Cache Trace", "A parts locker by the next Tech Stop."),
+  ];
+}
+
 export function ejectedCommand(state: GameState): Command | null {
   if (state.phase !== "player" || !state.ejected) return null;
   return { uid: "ejected", cmd: "retrieve", label: "Retrieve the Leech", detail: "1 Energy: back to your hand before something steps on it.", enabled: canPayEnergy(state, 1, true) };
@@ -448,6 +527,14 @@ export function runCommand(state: GameState, uidOf: string, cmd: string, targetI
     log(state, "You snatch the Leech off the floor.");
     return;
   }
+  if (uidOf === "tap") {
+    if (!state.tap || !["hazard", "weak", "cache"].includes(cmd)) return;
+    const source = state.tap;
+    state.tap = null;
+    resolveTap(state, source, cmd as TapChoice);
+    return;
+  }
+  if (state.tap) return;
   const u = unit(state, uidOf);
   if (!u) return;
   const def = commandsFor(state, u).find((c) => c.cmd === cmd);
@@ -475,6 +562,57 @@ export function runCommand(state: GameState, uidOf: string, cmd: string, targetI
       if (state.overrides >= 3) log(state, `${label(u.kind)} ${pick(state, OVERRIDE_LINES)}.`);
       break;
     }
+    case "unwedge":
+      payEnergy(state, RULES.wedgeRemoveEnergy, true);
+      u.wedge = 0;
+      log(state, `You knock the Wedge out of the ${label(u.kind)}'s release track.`);
+      break;
+    case "unbind":
+      u.cap = undefined;
+      u.plan = undefined;
+      log(state, `You take the restraints off the ${label(u.kind)}.`);
+      break;
+    case "apprehend":
+      u.apprehend = t!.uid;
+      u.mood = "approaching";
+      log(state, `Clampjaw turns its teal eye on the ${label(t!.kind)} and starts toward it.`);
+      break;
+    case "transfer":
+      transferCaptive(state, u, vacantPod(state)!);
+      break;
+    case "letgo": {
+      const held = heldBy(state, u);
+      if (captiveOf(state, u.uid)) loseCaptive(state, u.uid, "you opened it", true);
+      else if (held?.cap) {
+        if (held.cap.bands > 0) held.cap.by = undefined;
+        else held.cap = undefined;
+        log(state, "Clampjaw opens its clamps.");
+      }
+      break;
+    }
+    case "contain": {
+      // Atomic: the unit leaves the field and becomes the Pod's one captive in the same step.
+      const cap = t!.cap!;
+      const clamp = unit(state, cap.by);
+      state.units = state.units.filter((x) => x.uid !== t!.uid);
+      const lbl = t!.kind === "capsule" ? "The capsule and its pilot" : `The ${label(t!.kind)}`;
+      state.captives.push({ id: t!.uid, kind: t!.kind, pilot: t!.pilot, label: lbl, holder: u.uid, bands: cap.bands, tapped: !!t!.note?.includes("tapped"), hp: t!.hp });
+      u.holding = t!.uid;
+      u.occupied = 0;
+      u.podIntegrity = 100;
+      if (clamp) clamp.mood = "free";
+      log(state, `${lbl} goes into the Containment Pod. CONTAINED.`);
+      if (t!.pilot) setPilot(state, t!.pilot, "captured");
+      break;
+    }
+    case "power":
+      u.powerOff = !u.powerOff;
+      if (!u.powerOff) u.occupied = Math.min(u.occupied ?? 0, RULES.podUpkeepTurns - 1);
+      log(state, u.powerOff ? "Containment Pod power cut. LOW POWER warnings will follow." : "Containment Pod back on power.");
+      break;
+    case "dismantle":
+      dismantleCaptive(state, u.uid);
+      break;
     case "release":
       u.sealed = 0;
       log(state, `You crack the sealant off ${label(u.kind)} early.`);

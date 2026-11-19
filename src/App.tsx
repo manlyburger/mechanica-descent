@@ -17,6 +17,13 @@ import {
   validTargets,
   whyNot,
   installQa,
+  PROX_NAMES,
+  captiveOf,
+  integrityBand,
+  pilotRoster,
+  tapCommands,
+  teamSummary,
+  whyNotRestrainable,
   type Action,
   type CardInst,
   type Command,
@@ -25,7 +32,7 @@ import {
 } from "./game/engine";
 import "./App.css";
 
-const KEY = "mechanica-descent-v4";
+const KEY = "mechanica-descent-v5";
 type Dispatch = (a: Action) => void;
 const newSeed = () => (Date.now() % 99991) + 1;
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -34,6 +41,8 @@ const SHORT: Record<UnitKind, string> = {
   jubey: "Jubey", light: "Light", lvl2: "Level 2", infested: "Infested", scared: "Scared", drone: "Drone", zombie: "Zombie",
   rifleman: "Rifle", powered: "P. Armor", patient: "Patient", robobuddy: "Buddy", builder: "Builder", possum: "Possum", gunnest: "Nest",
   bulkhead: "Bulkhead", beacon: "Beacon", shepherd: "Shepherd", walker: "Walker", jack: "Panic Jack", warframe: "Warframe",
+  clampjaw: "Clampjaw", pod: "Pod", needleback: "Courier", latchback: "Brawler", widow: "Widow", kilnheart: "Breaker",
+  bishop: "Bishop", capsule: "Capsule", relay: "Relay", prisoner: "Prisoner",
 };
 
 function load(): GameState {
@@ -41,7 +50,7 @@ function load(): GameState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw) as GameState;
-      if (s && s.v === SAVE_VERSION && Array.isArray(s.deck) && Array.isArray(s.wrecks)) return s;
+      if (s && s.v === SAVE_VERSION && Array.isArray(s.deck) && Array.isArray(s.wrecks) && s.team) return s;
     }
   } catch {
     /* storage unavailable or save unreadable: start clean */
@@ -133,11 +142,16 @@ function Gear({ state }: { state: GameState }) {
   if (state.badge.turns > 0) g.push(`Badge ${state.badge.turns}`);
   if (state.hallwayArmed) g.push("Exit is wrong");
   if (state.preCommission) g.push("Warframe pre-commissioned");
+  for (const c of state.captives) g.push(`Held: ${c.label}`);
+  if (state.intel.weak) g.push("Records: a weak point next fight");
+  if (state.intel.cache > 0) g.push(`Records: cache at next Tech Stop`);
+  if (state.intel.questionable) g.push("RECORDS UNVERIFIED");
+  if (state.team.knownRoute && state.team.introduced) g.push("R-8 route known");
   if (!g.length) return null;
   return (
     <div className="gear">
       {g.map((x) => (
-        <span key={x} className={/UNSTABLE|LAST/.test(x) ? "warn" : ""}>
+        <span key={x} className={/UNSTABLE|LAST|UNVERIFIED/.test(x) ? "warn" : ""}>
           {x}
         </span>
       ))}
@@ -154,6 +168,18 @@ function Help() {
       </p>
       <p>
         <b>Armor</b> (◈) takes 1 off every hit, so 1-damage hits do nothing. A Salvage Leech's second pull strips a point.
+      </p>
+      <p>
+        <b>Melee</b> enemies have to reach you. Their card slides down the lane: Distant, Closing, Melee Ready. Only then can
+        they hit. Stun or foam stops the advance; Crane Hook throws them back a step.
+      </p>
+      <p>
+        <b>Capture.</b> A machine at {RULES.captureHp} HP or less, or a disabled one, can be grappled by a Clampjaw or banded with
+        Lockbands. Secured machines stop fighting and strain at the restraint. A Clampjaw and a Pod hold one captive each.
+      </p>
+      <p>
+        <b>Pilots.</b> Some mechs eject. A capsule that leaves the room means a pilot who may come back in a new frame. A
+        Cockpit Wedge blocks the ejection, not the radio and not the reactor.
       </p>
       <p>
         <b>Machines.</b> Tap any unit to inspect it and give orders. Allied machines act on their own after your turn, and stay
@@ -232,7 +258,7 @@ function Route({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
       <h2>Room {state.room}. Pick a path.</h2>
       <p className="muted">
         {state.revealNext
-          ? `You know what is in there: ${state.nextPack.map((k) => label(k)).join(", ") || "nothing"}.`
+          ? `${state.intel.questionable ? "UNVERIFIED records say" : "You know what is in there"}: ${(state.intel.questionable ? ["drone" as UnitKind, ...state.nextPack.slice(1)] : state.nextPack).map((k) => label(k)).join(", ") || "nothing"}.`
           : `Expect ${lights} Light${lights > 1 ? "s" : ""}, extra Light ${pct(d.extraLight)}, Infested ${pct(d.infested)}${state.room >= 3 ? `, Level 2 ${pct(d.lvl2)}` : ""}.`}
         {drones > 0 ? ` Threat ${state.threat}: ${drones} Drone${drones > 1 ? "s" : ""} will follow.` : ""}
         {state.pendingSpawn.length ? ` Something from the last hall is waiting too.` : ""} Decon Bay in {toDecon} room
@@ -261,6 +287,13 @@ function EventPanel({ state, dispatch }: { state: GameState; dispatch: Dispatch 
   return (
     <section className="panel event">
       <h2>{v.title}</h2>
+      {state.event?.id.startsWith("r8") && <TeamBar state={state} />}
+      {v.screen && (
+        <div className="pscreen" role="img" aria-label={`The Prisoner's screen shows ${v.screen.glyph}. ${v.screen.caption}`}>
+          <div className={`pglyph ${v.screen.anim}`}>{v.screen.glyph}</div>
+          <div className="pcaption">{v.screen.caption}</div>
+        </div>
+      )}
       {v.lines.map((l, i) => (
         <p key={i} className="hook">
           {l}
@@ -289,15 +322,28 @@ function planText(state: GameState, u: Unit): string {
   if (p.type === "attack") return `${p.note ? p.note + ": " : ""}shot ${p.dmg} → ${at}`;
   if (p.type === "missile") return `MISSILE ${p.dmg} → ${at}`;
   if (p.type === "disabled") return u.foam ? "foamed" : (u.sealed ?? 0) > 0 ? `sealed ${u.sealed}` : "stunned";
+  if (p.type === "eject") return p.note ?? "PREPARING TO EJECT";
+  if (p.type === "detonate") return "REACTOR FAILURE THIS TURN";
   return p.note ?? p.type;
 }
 
 function statusLines(state: GameState, u: Unit): string[] {
   const s: string[] = [];
   if (u.side === "enemy") {
+    if (u.cap) s.push(`${u.cap.state === "secured" ? "SECURED" : "BEING SECURED"} · restraint ${integrityBand(u.cap.integrity)}${u.cap.bands ? ` · ${u.cap.bands} band${u.cap.bands > 1 ? "s" : ""}` : ""}`);
     s.push(planText(state, u));
+    if (u.prox !== undefined) s.push(PROX_NAMES[u.prox]);
+    if (u.pilot) s.push(u.kind === "capsule" ? "pilot inside" : "pilot aboard");
+    else if (["needleback", "latchback", "widow", "kilnheart", "bishop"].includes(u.kind)) s.push("no pilot");
+    if ((u.wedge ?? 0) > 0) s.push(`COCKPIT WEDGED ${u.wedge}`);
+    if (u.kind === "kilnheart") s.push(`reactor ${["stable", "HEATED", "CRITICAL"][u.heat ?? 0]}${(u.heat ?? 0) >= 2 ? `: detonates in ${u.fuse}` : ""}`);
+    if (u.kind === "capsule" && u.exitIn !== undefined) s.push(u.flying ? "airborne: crane and hook cannot reach" : "on the floor");
+    if (u.replacement) s.push("replacement frame");
+    if (u.guardBy) s.push("covered by the Brawler");
     if (u.missiles > 0) s.push(`lock ${u.lock}/2`);
-    if (u.note) s.push(u.note);
+    if (u.note && !u.note.includes("tapped")) s.push(u.note);
+    const why = whyNotRestrainable(u);
+    if (why && why !== "not a machine") s.push(why);
   }
   if (u.leech) s.push(`${u.leech.temp ? "offspring " : ""}leech ${u.leech.count}/${RULES.leechMax}`);
   if (u.armor > 0) s.push(`armor ${u.armor}: −${u.armor} per hit`);
@@ -317,6 +363,12 @@ function statusLines(state: GameState, u: Unit): string[] {
     if (u.kind === "walker") s.push(u.elevated ? "overhead" : "on the floor");
     if (u.kind === "jack") s.push(u.protect ? `guards ${SHORT[state.units.find((x) => x.uid === u.protect)?.kind ?? "jubey"]}${u.intercepted ? " (spent)" : ""}` : "no ward");
     if (u.kind === "gunnest") s.push(u.clamp ? "clamped +2" : "crawling");
+    if (u.kind === "clampjaw" || u.kind === "pod") {
+      const c = captiveOf(state, u.uid);
+      const field = state.units.find((x) => x.cap?.by === u.uid);
+      s.push(c ? `holding ${c.label}` : field ? `clamped on ${SHORT[field.kind]}` : u.apprehend ? "moving in" : "empty");
+      if (u.kind === "pod" && c) s.push(`seal ${integrityBand(u.podIntegrity ?? 100)}${u.powerOff ? " · POWER CUT" : ` · upkeep in ${RULES.podUpkeepTurns - (u.occupied ?? 0)}`}`);
+    }
     if (u.kind === "bulkhead") s.push(`covers ${SHORT[state.units.find((x) => x.uid === u.guards)?.kind ?? "jubey"]}`);
     if (u.roomsLeft !== undefined) s.push(`${u.roomsLeft} fight${u.roomsLeft > 1 ? "s" : ""} left`);
     if ((u.ward ?? 0) > 0) s.push(`prevents ${u.ward}`);
@@ -396,7 +448,7 @@ function Battle({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
             : "Tap the card again to play.";
 
   const lane = (side: Unit[], isEnemy: boolean) => (
-    <div className="lane">
+    <div className={`lane ${isEnemy ? "enemy" : ""}`}>
       {Array.from({ length: RULES.lanes }, (_, i) => {
         const u = side.find((e) => e.slot === i);
         if (!u) return <button key={i} className={`token empty ${isEnemy && sel && targets === "column" ? "target" : ""}`} onClick={() => tapEmpty(i)} aria-label="empty column" />;
@@ -407,6 +459,7 @@ function Battle({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
 
   return (
     <section className="panel battle">
+      {state.team.introduced && enemies.some((u) => u.pilot || u.kind === "relay") && <TeamBar state={state} />}
       <div className="lane-label">
         ENEMY LANE · aim {pct(enemyHitChance(state))}
         {state.queue.length ? ` · ${state.queue.length} inbound` : ""}
@@ -428,8 +481,23 @@ function Battle({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
         </div>
       )}
 
-      {inspected && (
+      {state.tap && (
         <div className="sheet">
+          <div className="sheet-head">
+            <b>Memory Tap connected</b>
+            <span>choose one read</span>
+          </div>
+          {tapCommands(state).map((c) => (
+            <button key={c.cmd} className="btn mini" onClick={() => dispatch({ type: "command", uid: "tap", cmd: c.cmd })}>
+              {c.label}
+              <small>{c.detail}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {inspected && !state.tap && (
+        <div className="sheet" ref={(el) => el?.scrollIntoView({ block: "end", behavior: "smooth" })}>
           <div className="sheet-head">
             <b>
               {label(inspected.kind)}
@@ -503,6 +571,36 @@ function Battle({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
   );
 }
 
+/** Compact R-8 status; tap to expand the pilot roster. */
+function TeamBar({ state }: { state: GameState }) {
+  const [open, setOpen] = useState(false);
+  const sum = teamSummary(state);
+  return (
+    <button className="teambar" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <span className="teamname">RELAY SECTION R-8</span>
+      <span>
+        {sum[0].value} · Pursuit: {sum[5].value}
+        {state.teamOrder ? ` · ORDER: ${state.teamOrder}` : ""}
+      </span>
+      {open && (
+        <span className="teamopen">
+          {sum.map((x) => (
+            <span key={x.label}>
+              {x.label}: {x.value}
+            </span>
+          ))}
+          {pilotRoster(state).map((x) => (
+            <span key={x} className="pilotline">
+              {x}
+            </span>
+          ))}
+          {state.team.ending && <span className="pilotline">Outcome: {state.team.ending}</span>}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function CardView({ card, selected, dim, big, onClick, disabled }: { card: { id: CardId; variant?: string; rounds?: number }; selected?: boolean; dim?: boolean; big?: boolean; onClick?: () => void; disabled?: boolean }) {
   const d = CARDS[card.id];
   const cls = ["card", selected ? "sel" : "", dim ? "dim" : "", big ? "big" : "", d.cats.includes("Nightmare") ? "night" : "", d.deploys ? "machine" : "", d.exhaust || card.rounds !== undefined ? "ammo" : ""].join(" ");
@@ -521,15 +619,18 @@ function CardView({ card, selected, dim, big, onClick, disabled }: { card: { id:
 function Token({ unit, state, target, open, onClick }: { unit: Unit; state: GameState; target?: boolean; open?: boolean; onClick?: () => void }) {
   const self = unit.side === "friendly";
   const lines = statusLines(state, unit);
-  const alert = unit.plan?.type === "missile" || !!unit.malf;
-  const cls = ["token", unit.kind, self ? "self" : "", unit.crazy ? "crazy" : "", target ? "target" : "", open ? "open" : "", alert ? "missile" : "", unit.foam || (unit.sealed ?? 0) > 0 ? "muted-unit" : "", unit.elevated ? "elevated" : ""].join(" ");
+  const alert = unit.plan?.type === "missile" || unit.plan?.type === "eject" || unit.plan?.type === "detonate" || !!unit.malf || (unit.heat ?? 0) >= 2;
+  const cls = ["token", unit.kind, self ? "self" : "", unit.crazy ? "crazy" : "", target ? "target" : "", open ? "open" : "", alert ? "missile" : "", unit.foam || (unit.sealed ?? 0) > 0 ? "muted-unit" : "", unit.elevated ? "elevated" : "", unit.prox ? `prox-${unit.prox}` : "", unit.cap ? "restrained" : "", unit.flying ? "flying" : ""].join(" ");
   return (
     <button className={cls} onClick={onClick}>
       <div className="tn">
         {SHORT[unit.kind]}
         {unit.crazy ? " ✱" : ""}
         {unit.leech ? " ⛭" : ""}
+        {unit.pilot && unit.side === "enemy" ? " ●" : ""}
       </div>
+      {unit.prox !== undefined && unit.prox > 0 && !unit.cap && <div className="proxtag">{unit.prox >= RULES.proxEngaged ? "IN REACH" : "CLOSING"}</div>}
+      {unit.cap && <div className="proxtag cap">{unit.cap.state === "secured" ? "SECURED" : "SECURING"}</div>}
       <div className="th">
         {unit.hp}/{unit.maxHp}
         {unit.armor > 0 ? ` ◈${unit.armor}` : ""}
@@ -651,6 +752,21 @@ function Tech({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
                 <small>{v.text}</small>
               </button>
             ))}
+          </div>
+        ))}
+        {state.captives.map((c) => (
+          <div key={c.id} className="offer">
+            <div className="lane-label">IN CUSTODY · {c.label.toUpperCase()}</div>
+            {!c.pilot && (
+              <button className="btn mini" onClick={() => dispatch({ type: "captive", holder: c.holder, what: "dismantle" })}>
+                Dismantle it
+                <small>Scrap, and the holder is free again.</small>
+              </button>
+            )}
+            <button className="btn mini" onClick={() => dispatch({ type: "captive", holder: c.holder, what: "release" })}>
+              Release
+              <small>{c.pilot ? "They walk out. They may come back in a new frame." : "Let it go."}</small>
+            </button>
           </div>
         ))}
         {state.equip.servo && (

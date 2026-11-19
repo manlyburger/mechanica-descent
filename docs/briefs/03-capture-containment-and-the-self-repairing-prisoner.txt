@@ -1,0 +1,1366 @@
+MECHANICA DESCENT
+
+Capture Cards, Containment & The Self-Repairing Prisoner
+
+Detailed Implementation Brief
+
+Status: PROPOSED — new content for implementation, not confirmation of existing features.
+
+Scope: Six selected cards and encounters, capture-state logic, resistance and escape, prisoner presentation, pilot hazards, intelligence extraction, Improvised Army integration, and validation.
+
+⸻
+
+1. Implementation goals
+
+Expand Mechanica Descent with nonlethal capture and mechanical containment as an alternative to destroying enemies.
+
+Selected additions:
+
+1. Clampjaw Drone
+2. Industrial Lockbands
+3. Cockpit Wedge
+4. Mobile Containment Pod
+5. Memory Tap
+6. The Prisoner That Repairs Itself
+
+Capture must be a tactical investment. Players can preserve enemies for intelligence, salvage, intact hardware, or possible conversion, but must manage securing time, limited capacity, resistance, rescue attempts, equipment damage, and escape.
+
+The Prisoner That Repairs Itself serves as the flagship encounter, with unusually expressive but thoroughly muted behavior.
+
+Explicit decisions for this implementation
+
+LOCKED FOR THIS BRIEF:
+
+* Clampjaw Drone may hold one captive at a time, never several simultaneously.
+* Mobile Containment Pod also holds exactly one eligible captive.
+* Cockpit Wedge applies only to actual cockpits on piloted machines.
+* Cockpit Wedge does not block, intercept, or interfere with communications or transmissions.
+* Cockpit Wedge prevents ejection. Therefore, a pilot may remain trapped in a mech that explodes.
+* Cockpit Wedge does not automatically prevent reactor destruction, self-destruct, restarting, or weapons operation.
+* The Prisoner That Repairs Itself is thoroughly muted: no intelligible speech, only muffled mechanical/vocal-like sounds and ellipsis-based screen expressions.
+* The prisoner’s actions must be visibly and audibly foreshadowed, allowing counterplay.
+
+Numerical values below are initial tuning proposals unless otherwise identified.
+
+⸻
+
+2. Shared capture rules
+
+2.1 Target states
+
+Use existing status systems where compatible.
+
+Active
+
+* Normal enemy behavior.
+* Can attack, maneuver, defend, and employ special abilities.
+
+Weakened
+
+* Meets a capture tool’s eligibility condition.
+* May still attack or resist.
+* Not automatically captured.
+
+Disabled
+
+* Unable to perform normal combat actions due to a shutdown or equivalent established effect.
+* May still possess restart, escape, or rescue options.
+
+Being Secured
+
+* A capture procedure is underway.
+* The captor is committed to the procedure.
+* Interruption may cancel progress.
+
+Secured
+
+* Restraints prevent normal combat participation.
+* Can attempt specific escape or resistance actions.
+* Can be transferred to suitable containment.
+
+Contained
+
+* Stored in a secure device.
+* No ordinary combat participation.
+* Containment integrity, power, and target-specific escape systems remain relevant.
+
+Escaped
+
+* Restraints or containment failed.
+* Enemy returns to its appropriate combat, flight, or recovery behavior.
+
+Distinguish pilot custody from chassis custody. An immobilized mech with a free, active pilot is not necessarily a secured pilot.
+
+2.2 Capture eligibility
+
+Initial supported targets:
+
+Target	Capture requirements
+Small autonomous drone	Weakened or disabled; normal restraints
+Medium autonomous machine	Weakened, disabled, or controlled; appropriate restraint
+Piloted mech	Stabilize chassis and separately address cockpit/pilot
+Heavy combat frame	Excluded from ordinary small-target tools unless specially supported
+Self-repairing anomaly	Encounter-specific restraint and regeneration logic
+
+A target’s HP alone must not imply that the target has surrendered.
+
+2.3 Escape model
+
+Use a readable Restraint Integrity value rather than unexplained random releases.
+
+Proposed starting scale: 0–100.
+
+* 76–100: Stable restraint
+* 41–75: Strained
+* 1–40: Critical
+* 0: Restraint broken
+
+Different captive types apply different strain.
+
+Restraint actions can restore integrity, while struggle actions reduce it.
+
+Show the current band to the player, with precise numbers optionally available in expanded inspection.
+
+Do not perform arbitrary hidden instant escapes from fully stable restraints.
+
+2.4 Capture outcomes
+
+After sufficiently securing a target, offer compatible options:
+
+* Hold.
+* Transfer to containment.
+* Extract technical intelligence.
+* Recover or dismantle chassis.
+* Attempt supervised conversion, where explicitly supported.
+* Release, abandon, or withdraw.
+
+Avoid creating unique loot twice through capture followed by destruction.
+
+⸻
+
+3. Card 1 — Clampjaw Drone
+
+Type: Common Machine Ally
+Cost: 2 Scrap
+HP: 4
+Attack: 0
+Capacity: One captive
+
+Core ability — Apprehend
+
+The drone uses heavy clamps to secure a weakened small or medium mechanical target.
+
+Default eligibility: target at 3 HP or less, or already Disabled.
+
+Capture sequence
+
+Action 1: Grapple
+
+* Move into valid restraint range.
+* Engage the target with hydraulic clamps.
+* Apply Being Secured.
+* Display a clear capture-progress indicator.
+
+Action 2: Lock
+
+* If the grapple remained valid, complete the restraint.
+* Target becomes Secured.
+* Drone enters Holding state.
+
+Both stages use the drone’s ordinary action opportunities. The sequence does not complete instantly on deployment.
+
+One-captive rule
+
+Once Clampjaw holds a captive:
+
+* It cannot capture another.
+* It does not automatically abandon the first captive to pursue a weaker enemy.
+* It may hold, reposition, reinforce, transfer, or release its current captive.
+* Transfer to containment frees the drone to capture again.
+* Drone destruction ends its mechanical hold; independently applied Lockbands remain in place.
+
+Do not implement multigrab upgrades or capacity increases as part of this brief.
+
+Commands
+
+Apprehend: Pursue one selected valid target.
+
+Hold: Maintain current captive and defensive position.
+
+Reinforce: Spend an action increasing restraint integrity.
+
+Transfer: Deliver captive to an available compatible Containment Pod.
+
+Release: Disengage intentionally.
+
+Retreat: Withdraw when not attached to a captive.
+
+Struggle behavior
+
+A secured target may strain against the drone.
+
+Possible consequences:
+
+* Reduce restraint integrity.
+* Deal 1 damage to Clampjaw.
+* Force the drone to spend its next action reinforcing.
+* Cause partial separation without immediately freeing the target.
+
+Heavy or specially powerful targets are ineligible rather than being silently guaranteed to fail.
+
+Industrial Lockbands synergy
+
+Applying Lockbands during the Grapple stage may finish the securing process using the player’s equipment action.
+
+This costs a real action and the Lockbands resource.
+
+Additional Lockbands reinforce the captive after securing.
+
+Builder Drone synergy
+
+Builder Drone can repair Clampjaw while it maintains a captive.
+
+Repair does not automatically restore restraint integrity; reinforcement remains a separate operation.
+
+Visual details
+
+* Short, heavily armored body.
+* Two oversized primary clamp arms.
+* Smaller alignment claws.
+* Distinctive teal eye or sensor.
+* Visible clamp pressure indicators.
+* Struggling targets shake the drone’s arms.
+* At critical restraint integrity, clamps visibly begin separating.
+
+The captive’s resistance should feel physically believable.
+
+⸻
+
+4. Card 2 — Industrial Lockbands
+
+Type: Common Utility / Equipment
+Cost: 1 Scrap per application
+Maximum: 2 bands per eligible captive
+
+Core ability — Secure Target
+
+Apply heavy industrial restraint bands to a Disabled, Being Secured, or Secured target.
+
+First band
+
+* Supplies a basic restraint layer.
+* Can complete an eligible grapple.
+* Reduces ordinary mobility and restart opportunities.
+* Adds 30 proposed Restraint Integrity, capped at 100.
+
+Second band
+
+* Provides redundant restraint.
+* Adds 30 additional Integrity.
+* Reduces the effectiveness of ordinary struggle attempts.
+* Makes enemy rescue operations require additional work.
+
+A second band does not create absolute immunity to breakout.
+
+Usage details
+
+Each band application:
+
+* Consumes a player action.
+* Requires a valid target and access.
+* Has an immediately visible effect.
+* Can be interrupted before completion by applicable enemy responses.
+
+Bands may restrain a mechanical frame, exposed arms, or compatible pilot equipment. They do not automatically restrain a pilot who remains inaccessible inside a sealed cockpit.
+
+Escape interactions
+
+Ordinary enemies strain against the restraint.
+
+Powerful enemies may:
+
+* Tear at a band.
+* Overload its locking mechanism.
+* Twist their chassis against it.
+* Use external cutting equipment.
+* Request rescue from allied units.
+
+Damaged bands must show strain warnings.
+
+Capture synergies
+
+Clampjaw Drone: Reinforces the active hold.
+
+Mobile Containment Pod: Provides additional physical security, but does not increase pod capacity.
+
+The Prisoner That Repairs Itself: Delays breakout, particularly if applied before its regeneration track advances.
+
+Improvised Army: Builder Drones may repair compatible restraints when those are represented as damageable equipment.
+
+⸻
+
+5. Card 3 — Cockpit Wedge
+
+Type: Uncommon Attachment
+Cost: 1 Scrap
+Target: A real, accessible cockpit on a piloted mech
+Duration: 2 turns
+
+Core ability — Block Ejection
+
+Install a mechanical wedge that prevents an eligible cockpit’s normal opening or emergency ejection mechanism from operating.
+
+The wedge is a physical obstruction, not an electronic jammer.
+
+Exact effects
+
+Blocked:
+
+* Cockpit ejection.
+* Normal cockpit opening.
+* Mechanical emergency escape through the affected cockpit hatch.
+
+Not blocked:
+
+* Radio communication.
+* Distress transmissions.
+* Communications with allies.
+* Reactor self-destruct.
+* Detonation.
+* Weapons operation.
+* Engine or control-system restart.
+* Other abilities unrelated to cockpit opening.
+
+Do not give Cockpit Wedge communications-jamming properties.
+
+The dangerous tradeoff — Trapped Pilot
+
+If the mech becomes critically unstable while its cockpit is wedged, the pilot may be unable to escape.
+
+For example:
+
+1. Player disables a piloted mech.
+2. Player installs Cockpit Wedge.
+3. Pilot attempts ejection.
+4. Ejection fails.
+5. Pilot remains inside the mech.
+6. Reactor instability worsens.
+7. If the mech explodes before the Wedge is removed, the pilot is exposed to the explosion and may be killed.
+
+Do not automatically protect the pilot from blast damage.
+
+Resolve the outcome using established cockpit protection, reactor damage, and pilot survivability rules where available.
+
+If those rules are absent, use an explicit, testable pilot-survival calculation rather than silently granting safety.
+
+Warning feedback
+
+When a wedged cockpit is attached to a critically unstable mech, show warnings such as:
+
+* COCKPIT EJECTION BLOCKED
+* REACTOR INSTABILITY DETECTED
+* PILOT STILL INSIDE
+* DETONATION RISK: HIGH
+
+The player should understand the consequence before taking an additional destructive action.
+
+Pilot reactions
+
+Pilots can:
+
+* Attempt ejection and discover it is blocked.
+* Transmit a distress call.
+* Ask allies for assistance.
+* Attempt to restart the mech.
+* Attempt to pry the cockpit mechanism.
+* Prepare emergency systems.
+* React to imminent reactor destruction.
+
+Radio dialogue may become increasingly desperate.
+
+The Wedge does not stop them from speaking or transmitting.
+
+Player choices
+
+Maintain Wedge
+
+* Continue blocking ejection.
+* Preserve the possibility of recovering the intact mech and pilot.
+* Accept increasing risk if the chassis is unstable.
+
+Remove Wedge
+
+* Spend an action to disengage.
+* Restore normal cockpit opening/ejection behavior if the underlying systems still work.
+
+Extract Pilot
+
+* Requires an appropriate controlled extraction procedure.
+* The Wedge must be disengaged or explicitly bypassed.
+* Pilot must then be independently secured.
+
+Recover Chassis
+
+* Stabilize and transport the mech if compatible recovery systems are available.
+
+Compatibility restrictions
+
+Cannot target:
+
+* Autonomous drones with no cockpit.
+* External machinery without an actual cockpit.
+* Unpiloted combat frames.
+* Synthetic prisoner machinery merely resembling a humanoid torso.
+* The base version of The Prisoner That Repairs Itself, unless an authored variant establishes a piloted cockpit.
+
+Cockpit Wedge is deliberately specialized.
+
+⸻
+
+6. Card 4 — Mobile Containment Pod
+
+Type: Rare Structure
+Cost: 3 Scrap
+HP: 7
+Capacity: One captive
+Power upkeep: 1 Energy per 3 turns
+
+Core ability — Contain
+
+Transfer one compatible Secured captive into the Pod.
+
+Supported initial targets:
+
+* One captured pilot.
+* One small autonomous machine.
+* One medium support machine that fits its capacity.
+
+No simultaneous second captive, even if both are small.
+
+Heavy combat frames cannot fit.
+
+An entire piloted combat mech cannot be placed inside simply because its cockpit is wedged. The pilot must be separately extracted and secured, or the chassis must be recovered through a suitable larger system.
+
+Transfer process
+
+1. Confirm the target is Secured.
+2. Confirm Pod is vacant and has sufficient integrity.
+3. Spend a transfer action.
+4. Move the captive into containment.
+5. Release temporary field restraints only when transfer succeeds.
+6. Mark Pod as Occupied.
+7. Preserve any compatible Lockbands.
+
+If transfer is interrupted, the captive remains in its earlier state.
+
+Maintenance cycle
+
+After every three occupied turns, charge 1 Energy.
+
+If paid:
+
+* Maintain containment integrity.
+
+If unpaid:
+
+* Enter Low Power.
+* Reduce security integrity.
+* Disable some containment protections.
+* Begin clear failure warnings.
+
+A single missed payment does not automatically release the captive.
+
+Allow power restoration before catastrophic failure.
+
+Contained captive actions
+
+Most captives may:
+
+* Remain quiet.
+* Test restraints.
+* Attempt an escape.
+* Attempt to manipulate the player through permitted dialogue or signals.
+* Damage equipment if their abilities permit.
+* React to nearby allies or enemies.
+
+Captured machines should have behavior profiles rather than identical escape rolls.
+
+Pod destruction
+
+If destroyed:
+
+* Release a surviving captive into the appropriate location.
+* Apply normal environmental consequences.
+* Resolve whether the captive can move, attack, flee, or remains independently restrained.
+* Preserve Lockbands unless the destruction also damages them.
+
+Do not automatically convert every freed captive into an immediately attacking enemy.
+
+Available processing options
+
+Hold: Keep captive contained.
+
+Memory Tap: Extract compatible technical data.
+
+Dismantle: Process a captured machine into permitted salvage.
+
+Transfer: Move the captive to a supported storage or route system.
+
+Supervised Conversion: Available only for explicitly eligible machines.
+
+Release: Remove captive from custody through a controlled action.
+
+Builder Drone interaction
+
+A Builder Drone can:
+
+* Repair the Pod.
+* Reinforce compatible mechanisms.
+* Diagnose power failure.
+* Assist safe transfer.
+
+Do not permit normal HP repair to substitute for Energy upkeep.
+
+⸻
+
+7. Card 5 — Memory Tap
+
+Type: Uncommon Utility / Intelligence
+Cost: 1 Energy
+Target: Secured or Contained compatible machine
+
+Core ability — Extract Diagnostic Intelligence
+
+Read intact machine memory, operating records, sensor logs, and navigation traces.
+
+It does not automatically extract thoughts from a human pilot.
+
+For piloted machines, it accesses the chassis and cockpit’s electronic records, not the pilot’s private mind.
+
+Three choices
+
+Hazard Scan
+
+Reveal an eligible nearby danger.
+
+Possible outputs:
+
+* Known trap location.
+* Ambush signature.
+* Hazard category.
+* Machinery activation warning.
+
+Weakness Analysis
+
+Reveal one useful weakness of a known or relevant upcoming enemy.
+
+Possible outputs:
+
+* Vulnerable armor component.
+* Damaged subsystem.
+* Resistance limitation.
+* Weapon startup behavior.
+
+Cache Trace
+
+Identify a potential salvage location.
+
+Possible outputs:
+
+* Maintenance storage.
+* Hidden component locker.
+* Discarded robot parts.
+* Accessible salvage room.
+
+Do not create a guaranteed cache without a valid encounter or reward location to attach it to.
+
+Data quality
+
+Proposed initial table:
+
+Result	Base probability
+Clean	60%
+Partial	30%
+Corrupted	10%
+
+Clean: Accurate, specific information.
+
+Partial: Accurate but incomplete information.
+
+Corrupted: Unreliable or contradictory information, clearly identified as questionable by the interface.
+
+Quality modifiers may include:
+
+* ●	reliability for contained targets.
+* ●	reliability for intact sensors and storage.
+* ●	reliability when an authorized cockpit connection is available.
+* ●	reliability for severe internal damage.
+* ●	reliability for active counterintrusion behavior.
+* ●	reliability for anomalous prisoner machines.
+
+Avoid fabricated certainty. Corrupted results should have discoverable inconsistencies rather than creating completely unavoidable traps.
+
+Repeated use
+
+Each captive provides a bounded intelligence budget.
+
+Proposed:
+
+* One full-value extraction per captive.
+* Subsequent attempts may reveal additional fragments only when the source explicitly has unrecovered information.
+* No infinite rewards through repeated taps.
+
+Possible backlash
+
+A corrupted machine may:
+
+* Attempt to transmit an alert if physically able.
+* Damage the connection.
+* Display misleading data.
+* Activate a dormant defense.
+* Increase its escape pressure.
+
+A captive’s communication capabilities must be checked separately from Cockpit Wedge status.
+
+⸻
+
+8. Rare Nightmare Encounter — The Prisoner That Repairs Itself
+
+8.1 Identity and presentation
+
+A damaged autonomous machine is discovered inside an old containment station.
+
+Its body is covered in reinforced restraint bands.
+
+Its main voice system is completely muted.
+
+Yet it is still moving.
+
+Small mechanisms click underneath its armor. Sealed actuators strain. Broken components slowly realign.
+
+Its display shows nothing resembling normal speech.
+
+Only ellipses, punctuation, and brief changes in rhythm.
+
+The prisoner has no ordinary intelligible voice lines.
+
+Its silence is a defining feature of the encounter.
+
+8.2 Visual design
+
+Suggested appearance:
+
+* Tall, battered mechanical captive.
+* Thick restraints around torso, limbs, and internal articulations.
+* Damaged faceplate or single expression screen.
+* Limited head and shoulder motion.
+* Internal repair mechanisms beneath the plating.
+* Visible strain at the joints when attempting escape.
+* Intermittent light leaking through damaged seams.
+* Screen displaying ellipsis-based expressions.
+
+The machine should look contained, but not inactive.
+
+Expression screen
+
+Its screen may display:
+
+* …
+* … …
+* ……
+* …?
+* …!
+* ……!
+* …!!
+
+The expressions are not normal dialogue. They are incomplete, almost accidental signs of internal intent.
+
+Use different pauses, light intensity, animation timing, and punctuation to distinguish behaviors.
+
+8.3 Thoroughly muted audio behavior
+
+The prisoner attempts to make sounds but cannot produce understandable words.
+
+Permitted sounds:
+
+* Soft, muffled “mmph”-like mechanical vocalizations.
+* Air pressure pushing through sealed housings.
+* Strained electronic hums.
+* Quiet metallic rattling.
+* Short frustrated vibrations.
+* Small motor clicks.
+* Low, contained grinding.
+* A sharp muffled burst during an escape attempt.
+
+No clear speech should come from the prisoner, even when enraged.
+
+The sounds should feel trapped behind sealed machinery.
+
+Important distinction: Its voice output is muted; its physical machinery is not silent.
+
+Players must be able to hear mechanical movement and recognize dangerous activity.
+
+⸻
+
+9. Prisoner repair and escape progression
+
+Use a five-stage sequence with distinct audiovisual cues.
+
+Stage 0 — Apparently Quiet
+
+Screen: …
+
+Audio: Occasional low mechanical hum.
+
+Animation: Minimal movement; slow repairs beneath armor.
+
+The prisoner appears subdued.
+
+Small warning signs suggest it may still be functioning.
+
+Stage 1 — Testing the Restraints
+
+Screen: … …
+
+Audio: Repeated small metallic clicks and muffled mechanical murmuring.
+
+Animation: Fingers flex. Shoulders shift. A restraint tightens.
+
+Gameplay: Repair progress advances.
+
+The player can inspect or reinforce the restraints before the situation worsens.
+
+Stage 2 — Calculating an Escape
+
+Screen: ……
+
+Audio: Rhythmic pressure pulses, increasingly deliberate.
+
+Animation: One restraint begins visibly bending.
+
+Gameplay: The prisoner prepares a specific escape or sabotage action.
+
+Its body movement should reveal which area is under strain.
+
+Stage 3 — Imminent Action
+
+Screen: …!
+
+Audio: A longer muffled mechanical protest, followed by a sharp clamp noise.
+
+Animation: The prisoner visibly braces or twists.
+
+Gameplay: Its next scheduled action attempts to break restraint, sabotage equipment, or trigger another preselected hostile behavior.
+
+Provide the player a clear response window.
+
+Stage 4 — Breakout
+
+Screen: …!!
+
+Audio: Loud metallic snapping, mechanical pressure release, and a final muffled vocal-like burst.
+
+Animation: Restraints fail or a component escapes its enclosure.
+
+Gameplay: Resolve the prepared action.
+
+Possible outcomes:
+
+* Partial breakout.
+* Fully escaped machine.
+* Containment damage.
+* A damaged player machine.
+* A recapture opportunity.
+
+Breakout should not always mean instantaneous full freedom.
+
+The exact outcome depends on target state, restraint integrity, applied equipment, and prior player actions.
+
+⸻
+
+10. Prisoner intent and readable tells
+
+In addition to its repair stage, assign a current intent.
+
+These are important because the ellipses should cue what the prisoner is actually about to do.
+
+Intent	Screen cue	Sound / animation	Possible response
+Self-repair	Slow …	Repeated internal welding clicks	Interrupt repair or accelerate capture
+Restraint break	Fast … …!	Clamp strain, shoulder twist	Reinforce restraints
+Feigned compliance	Long, still ……	Mechanical activity suddenly stops	Inspect before trusting
+Pod sabotage	Pulsing …!	Tapping near Pod controls	Repair or isolate controls
+Data trap	Flickering …?	Sensor clicks near Memory Tap connection	Disconnect or verify records
+Desperate escape	Bright …!!	Rapid, uneven rattling	Immediate containment action
+
+The same symbol may appear in multiple contexts, but animations and sound must make intent reasonably interpretable.
+
+Do not reveal precise success chances as screen dialogue.
+
+The point is to create uncertainty without making the encounter unreadable.
+
+Feigned compliance
+
+One especially important behavior:
+
+The prisoner suddenly stops struggling.
+
+Its screen goes almost still.
+
+It produces a tiny, muffled sound.
+
+Its restraints appear stable.
+
+This may genuinely mean its repairs have stalled—or it may be waiting for the player to remove equipment or initiate a Memory Tap.
+
+The player can inspect it, reinforce containment, or proceed cautiously.
+
+A successful inspection exposes the deception before the hostile action occurs.
+
+⸻
+
+11. Prisoner encounter choices
+
+Option A — Strip It for Parts
+
+The player dismantles useful components.
+
+Proposed reward: 4 Scrap and a chance of a compatible uncommon component.
+
+Risks:
+
+* Repair progress may accelerate during dismantling.
+* The prisoner may sabotage the cutting process.
+* Valuable memory components may be damaged.
+* A partially freed machine may attack or attempt escape.
+
+Allow the player to stop dismantling and secure it again if the action is interrupted.
+
+Option B — Reinforce Containment
+
+Use Industrial Lockbands, compatible support machinery, or a suitable Pod.
+
+Effects:
+
+* Restore restraint integrity.
+* Delay or reverse breakout progress.
+* Improve chances of safe analysis.
+* Consume actions and resources.
+
+Repeated reinforcement is bounded by equipment capacity and integrity limits.
+
+The prisoner should visibly react: its screen may show …! while it attempts to test the new restraints.
+
+Option C — Memory Tap
+
+Attempt to access the prisoner’s diagnostic memory.
+
+Possible rewards:
+
+* An unusual route clue.
+* A rare maintenance cache.
+* An enemy-machine weakness.
+* An important warning about a nearby facility system.
+
+Risks:
+
+* Corrupted or false records.
+* Counterintrusion behavior.
+* Accelerated escape.
+* Temporary malfunction of the Tap interface.
+
+During an attempted data trap, show …? and faint sensor chatter before the hostile response.
+
+The source may be extremely useful but not necessarily trustworthy.
+
+Option D — Recruit Under Supervision
+
+Attempt to convert the prisoner into a temporary allied machine.
+
+This is the highest-risk branch.
+
+Possible requirements:
+
+* Stable containment.
+* Adequate repair.
+* Successful compatible control-system intervention.
+* A limited supervision period.
+
+Possible outcomes:
+
+Controlled Success
+
+* Temporary allied machine, with known limitations.
+
+Unstable Success
+
+* Allied machine with a visible malfunction risk.
+
+Failure
+
+* Prisoner attempts to break free or turns hostile.
+
+Do not grant permanent loyalty solely because it was repaired.
+
+Option E — Leave It Alone
+
+Withdraw without dismantling or interacting further.
+
+* Preserve resources.
+* Avoid immediate danger.
+* Leave the machine in its current state.
+
+Only advance longer-term consequences if the game already supports revisiting encounters or persistent room events.
+
+⸻
+
+12. Special card interactions with the prisoner
+
+Clampjaw Drone
+
+Can attempt to secure the prisoner after it becomes physically eligible.
+
+* Holds exactly one captive.
+* May be damaged by unusually strong struggles.
+* Can delay partial breakout.
+* Cannot overpower an ineligible heavy prisoner merely by existing.
+
+If the prisoner is too large for normal Clampjaw operation, provide a clear incompatibility indication rather than silently applying an ineffective restraint.
+
+Industrial Lockbands
+
+The primary reinforcement tool.
+
+* First band improves security.
+* Second band creates redundancy.
+* Neither permanently disables self-repair.
+
+Use visible deformation to show that the prisoner is threatening the bands.
+
+Cockpit Wedge
+
+Not applicable to the base prisoner.
+
+The base encounter concerns an autonomous restrained machine without a confirmed cockpit.
+
+Only an explicitly authored piloted variant with an actual cockpit may receive Cockpit Wedge.
+
+Even then, the Wedge blocks ejection, not transmissions or reactor failure.
+
+Mobile Containment Pod
+
+Can contain the prisoner only if its size and form are eligible.
+
+While inside:
+
+* The prisoner may continue repairing.
+* Internal damage can threaten Pod integrity.
+* Low Power increases breakout danger.
+* Maintenance and reinforcement remain relevant.
+
+Do not shrink an oversized prisoner into the Pod for convenience.
+
+Memory Tap
+
+Offers valuable intelligence but may activate counterintrusion behavior.
+
+The prisoner’s screen may shift from … to …? during connection.
+
+If a data trap is pending, the player receives a warning opportunity before it resolves.
+
+Builder Drone
+
+Can:
+
+* Repair compatible containment hardware.
+* Diagnose damaged restraints.
+* Support stabilizing operations.
+* Accidentally assist the prisoner if using an existing malfunction behavior.
+
+Normal Builder Drone repair must not automatically heal a hostile prisoner unless the rules explicitly permit wrong-target repair.
+
+Manual Override Hand
+
+Can correct eligible malfunctions in an allied converted prisoner.
+
+It cannot be used as a free instant capture tool while the prisoner remains hostile.
+
+Scrap Shepherd
+
+Can collect eligible wreckage after the prisoner is legitimately dismantled or destroyed.
+
+It cannot repeatedly harvest the same imprisoned machine.
+
+Black-Box Recorder
+
+If the prisoner becomes an allied machine and is subsequently destroyed, it may satisfy the Recorder’s ordinary allied-machine destruction trigger.
+
+⸻
+
+13. Encounter behavior and pacing
+
+The prisoner’s behavior should respond to player decisions, not merely advance a random timer.
+
+Examples:
+
+Player hesitates:
+
+* Repair track advances.
+* Sounds become more deliberate.
+* Screen ellipses grow more urgent.
+
+Player reinforces:
+
+* Restraint integrity improves.
+* Prisoner briefly struggles against the new pressure.
+* Repair progress may continue internally.
+
+Player disconnects Memory Tap:
+
+* Data trap is canceled if it has not resolved.
+* Prisoner may return to restraint testing.
+
+Player dismantles a repair component:
+
+* Regeneration may slow.
+* Prisoner may begin attacking restraints instead.
+
+Player releases a restraint too early:
+
+* Prisoner may exploit the opening.
+* A new breakout action becomes available.
+
+Player successfully contains it:
+
+* Its movement becomes limited.
+* Display remains active.
+* A quiet … may appear after the Pod locks.
+
+Do not make every silent moment a deception. The prisoner should sometimes genuinely stop to conserve effort.
+
+⸻
+
+14. Capture archetype integration
+
+The selected cards should support three main strategies.
+
+A. Field Apprehension
+
+Clampjaw Drone + Industrial Lockbands
+
+Capture a weakened machine while combat continues.
+
+Good for small targets and inexpensive salvage or intelligence.
+
+Weakness: Exposed to enemy interference.
+
+B. Piloted-Mech Recovery
+
+Cockpit Wedge + Lockbands + appropriate extraction/recovery tools
+
+Prevent ejection while attempting to capture a pilot and preserve the chassis.
+
+Good for intact mechanical rewards.
+
+Weakness: The pilot remains able to transmit, restart systems, and may be trapped by a subsequent explosion.
+
+The Wedge must never function as automatic safe pilot capture.
+
+C. Secure Intelligence Recovery
+
+Clampjaw Drone + Lockbands + Mobile Containment Pod + Memory Tap
+
+Invest in long-term containment to gain reliable information.
+
+Good for rare technical intelligence and controlled dismantling.
+
+Weakness: Resource-intensive and vulnerable to pod failure.
+
+⸻
+
+15. Implementation logic
+
+Capture state validation
+
+Every capture-related action must verify:
+
+* Target exists.
+* Target is eligible.
+* Target is reachable.
+* Target is in the required state.
+* Captor has available capacity.
+* Cost can be paid.
+* Required equipment is present.
+* No conflicting state prevents resolution.
+
+One-captive enforcement
+
+For Clampjaw Drone:
+
+heldCaptiveId must be either null or one valid target ID.
+
+For Mobile Containment Pod:
+
+containedCaptiveId must be either null or one valid target ID.
+
+Do not use collection arrays permitting multiple captives in these two card instances.
+
+Transfers should be atomic: never duplicate a captive across the Drone and Pod.
+
+Cockpit Wedge validation
+
+Before attachment, verify:
+
+* isPiloted = true
+* hasActualCockpit = true
+* cockpitAccessible = true
+* target is not already incompatible with wedging
+
+On installation, set only the appropriate hatch/ejection prevention state.
+
+Do not modify:
+
+* communications capability
+* radio availability
+* distress signal availability
+* reactor stability
+* self-destruct capability
+* general weapon functionality
+
+If ejection is attempted, reject the ejection while the Wedge remains effective.
+
+Explosion damage must continue normally, with the pilot still occupying the cockpit unless a separate valid escape path succeeded.
+
+Prisoner intent tracking
+
+Track:
+
+* Repair stage.
+* Restraint integrity.
+* Current intended action.
+* Whether the intent was telegraphed.
+* Remaining response window.
+* Current containment location.
+* Relevant equipment.
+* Counterintrusion status.
+* Unique reward claims.
+
+Choose an intended action deterministically according to encounter state and the run’s seeded RNG.
+
+Present audiovisual cues before executing major hostile actions.
+
+Never determine escape success solely from the current display animation.
+
+Reaction ordering
+
+When a major event happens:
+
+1. Validate action and state.
+2. Pay resource costs.
+3. Apply direct effects.
+4. Update restraint and repair progress.
+5. Generate any new intent.
+6. Present its tell.
+7. Allow valid reactions.
+8. Resolve the warned action when its scheduled turn arrives.
+9. Process destruction, escape, rewards, and cleanup.
+
+Avoid multiple nested breakout or destruction events firing from one machine action.
+
+⸻
+
+16. Interface and accessibility
+
+Capture interface
+
+Display:
+
+* Target capture state.
+* Current captor.
+* Available restraint slots.
+* Restraint integrity.
+* Current escape warning level.
+* Containment capacity.
+* Power upkeep timing.
+* Available processing choices.
+
+Prisoner display
+
+Give the Prisoner That Repairs Itself a dedicated, expressive screen.
+
+Text on this screen should remain almost exclusively ellipses and punctuation.
+
+Use animations to communicate:
+
+* hesitation
+* surprise
+* frustration
+* calculation
+* false calm
+* imminent escape
+
+Its vocal-like sounds must remain unintelligible.
+
+Accessibility
+
+Important gameplay cues cannot depend on sound alone.
+
+Provide:
+
+* visual restraint strain warnings
+* readable animation states
+* optional audio captions such as [muffled motor strain]
+* reduced-motion alternatives
+* visible imminent-action markers
+
+The player should be able to understand the encounter while playing with audio muted.
+
+⸻
+
+17. Testing plan
+
+Clampjaw Drone
+
+* Captures one eligible target.
+* Refuses a second target while occupied.
+* Releases capacity after valid transfer.
+* Maintains capture state when interrupted.
+* Correctly loses its mechanical hold when destroyed.
+* Doesn’t erase independent Lockbands.
+
+Industrial Lockbands
+
+* First and second applications produce distinct effects.
+* Third application is rejected.
+* Properly reinforces eligible targets.
+* Does not automatically reach inaccessible pilots.
+* Correctly responds to damage and struggle.
+
+Cockpit Wedge
+
+* Cannot attach to an unpiloted machine.
+* Cannot attach to an enemy without a cockpit.
+* Blocks ejection.
+* Does not block transmissions.
+* Does not block distress calls.
+* Does not block restart.
+* Does not prevent self-destruct or reactor explosion.
+* Leaves a trapped pilot exposed to explosion consequences.
+* Can be removed through a valid action.
+* Does not automatically count as pilot custody.
+
+Mobile Containment Pod
+
+* Holds exactly one captive.
+* Rejects a second.
+* Rejects oversized machines.
+* Charges upkeep at the correct interval.
+* Responds to low power.
+* Preserves independent restraints.
+* Resolves destruction and captive release.
+
+Memory Tap
+
+* Requires eligible secured or contained source.
+* Produces clean, partial, and corrupted results.
+* Doesn’t generate nonexistent route locations.
+* Prevents repeated rewards.
+* Detects compatible data traps.
+* Keeps machine data distinct from human pilot thoughts.
+
+Prisoner That Repairs Itself
+
+* Begins fully muted.
+* Never produces intelligible speech.
+* Produces correct muffled noises.
+* Displays all intended ellipsis patterns.
+* Changes screen expression with repair stages.
+* Telegraphs dangerous actions.
+* Gives the player an opportunity to respond.
+* Supports feigned compliance.
+* Can be reinforced.
+* Can be studied.
+* Can be dismantled.
+* Can break out.
+* Can be converted only through the appropriate requirements.
+* Cannot duplicate rewards.
+* Does not softlock if player has no capture cards.
+
+⸻
+
+18. Implementation passes
+
+Pass 1 — Capture foundations
+
+Implement target states, restraint integrity, eligibility checks, and single-captive ownership.
+
+Deliver Clampjaw Drone and Industrial Lockbands first.
+
+Pass 2 — Cockpit and containment
+
+Implement Cockpit Wedge’s strictly mechanical ejection blocking, pilot risk, Mobile Containment Pod capacity, power upkeep, and transfer behavior.
+
+Pass 3 — Intelligence extraction
+
+Implement Memory Tap, source data categories, reliability, corruption, and extraction limits.
+
+Pass 4 — Prisoner encounter
+
+Implement:
+
+* Repair progression.
+* Full containment room.
+* Muffled prisoner sound design.
+* Animated ellipsis screen.
+* Intent telegraphing.
+* Struggle and escape behavior.
+* All five player choices.
+* Special card interactions.
+
+Pass 5 — Integration and QA
+
+Validate all capture branches alongside existing Improvised Army cards, combat AI, salvage, enemy recovery operations, and room progression.
+
+⸻
+
+19. OPEN / TUNE LATER
+
+Do not silently decide:
+
+* Exact HP threshold for capture eligibility.
+* Final escape strain values.
+* Whether some enemy classes require special restraint tiers.
+* Lockband durability.
+* Capture reward scaling.
+* Duration and upkeep balance for Containment Pods.
+* Memory Tap reliability modifiers.
+* How many prisoner behavior variants should be authored.
+* Whether a captured enemy can later identify the player to its faction.
+* Whether the self-repairing prisoner has any larger narrative identity.
+* Whether successful conversions persist between rooms.
+
+None of those possibilities are established canon by this brief.
+
+⸻
+
+20. Acceptance criteria
+
+The package is ready for its first playable test when:
+
+1. All five ordinary capture cards are functional.
+2. Captives cannot be duplicated or stored beyond capacity.
+3. Clampjaw and Pod each support exactly one captive.
+4. Cockpit Wedge applies only to real cockpits and blocks ejection without affecting communications.
+5. A trapped pilot remains vulnerable to catastrophic chassis failure.
+6. Captures require meaningful action and resource expenditure.
+7. Memory Tap makes securing enemies a useful alternative to destroying them.
+8. The Prisoner That Repairs Itself has all major encounter branches.
+9. The prisoner is thoroughly muted while still producing expressive, muffled mechanical noises.
+10. Ellipsis screen expressions telegraph its intentions.
+11. Players can recognize and respond to imminent breakout attempts.
+12. Existing combat, navigation, salvage, and ally systems continue functioning.
+
+Final design target: Make capture a deliberate tactical process with memorable personalities, resistance, meaningful custody decisions, and dangerous consequences.
+
+The flagship prisoner should feel especially alive through its machinery: initially quiet, then increasingly restless, its little ellipsis display changing while clamps tighten and internal mechanisms begin to move.
+
+The moment its screen changes from … to …!, the player should recognize that something is about to happen—even though the prisoner cannot say a single understandable word.

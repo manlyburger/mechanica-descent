@@ -1,0 +1,1717 @@
+MECHANICA DESCENT
+
+Implementation Brief — Ejectable Mechs, Melee Closing, and the Pursuit Team
+
+Target: Claude / Mechanica Descent implementation
+Status: PROPOSED implementation instructions
+Selected enemy designs: Needleback Courier, Latchback Brawler, Gantry Widow, Kilnheart Breaker, Relay Bishop
+
+Primary design objective: Introduce a coordinated enemy mech team that pursues the player across rooms, protects and recovers its pilots, and can gradually be dismantled through combat, capture, interference, or negotiation.
+
+Priority enemy: Relay Bishop, the team’s commander and central story antagonist for this initial encounter sequence.
+
+⸻
+
+1. Implementation instructions
+
+Inspect the current Mechanica Descent source and integrate these additions with its existing combat, deck, navigation, Threat, salvage, and capture systems.
+
+Do not assume earlier proposed cards or mechanics have already been implemented.
+
+Preserve existing gameplay and deterministic behavior.
+
+Implement the requested systems in this order:
+
+1. Melee cards moving downward while closing into attack range.
+2. Five new enemy mech types with functional ejection systems.
+3. Initial persistent enemy mech-team framework.
+4. Escape, recovery, and replacement-mech consequences.
+5. Relay Bishop pursuit and branching narrative.
+6. Integration with capture tools, Improvised Army, and existing combat.
+7. Automated tests and playable validation scenarios.
+
+New behavior must be observable through combat animations, status indicators, event text, and enemy actions.
+
+Crucial: The pursuit team needs real persistent state. Do not implement this merely as narrative flavor or unrelated random encounters.
+
+⸻
+
+2. New melee mechanic — Cards close downward
+
+Objective
+
+Melee enemy cards should visibly shift downward toward the player’s side of the battlefield as they close in to deliver melee attacks.
+
+The motion should communicate:
+
+* The enemy is approaching.
+* The enemy is nearly in melee range.
+* A melee attack is imminent.
+* The enemy has reached engagement range.
+
+This needs to be mechanically meaningful and visually obvious.
+
+2.1 Melee approach states
+
+Support three proximity states, adapting to existing positional combat rules.
+
+State	Position	Behavior
+Distant	Original enemy row	Cannot use ordinary melee attacks
+Closing	Visibly shifted downward	Approaching the target
+Engaged	Nearest valid melee position	Can perform melee attacks
+
+At the beginning of an encounter, ordinary melee enemies start at an appropriate distance.
+
+On an approach action:
+
+1. Select a valid target.
+2. Check movement restrictions.
+3. Advance one proximity step.
+4. Animate the enemy’s card downward.
+5. Update its melee status.
+6. Show the approaching enemy clearly.
+
+When engaged, the enemy can attack according to its existing action economy.
+
+2.2 Visual implementation
+
+Use the game’s existing card movement and layout system if available.
+
+Suggested animation:
+
+* Cards slide downward over 200–350 ms.
+* Slight forward scaling or shadow adjustment emphasizes closeness.
+* Mechanical movement audio accompanies the shift.
+* A small CLOSING indicator appears during the approach.
+* Once in range, replace this with MELEE READY or an equivalent readable state.
+
+Do not move cards outside their battlefield slots or overlap essential controls.
+
+On mobile, shorten the distance if necessary while preserving the visible change.
+
+2.3 Combat rules
+
+* Melee units must close the required distance before ordinary melee attacks.
+* A unit already engaged does not need to repeat the approach.
+* Immobilized units cannot close.
+* Knockback may increase the distance again.
+* Retreating units move back upward visually.
+* Ranged units do not automatically shift downward.
+* Special charge, leap, or extended-reach actions may move or attack differently when explicitly defined.
+* Closing uses the unit’s normal movement/action allowance and must not grant an extra action.
+
+If the current game already has positioning or movement points, use that system as the source of truth. The downward shift must reflect actual tactical state, not invent a second contradictory range system.
+
+2.4 Special melee behaviors
+
+Latchback Brawler
+
+* Moves downward aggressively.
+* Has a pronounced heavy approach animation.
+* May perform a faster charge if its special ability is available.
+
+Kilnheart Breaker
+
+* Closes slowly but forcefully.
+* Its drills become visibly active as it approaches.
+* Can damage applicable cover during its closing action.
+
+Panic Jack
+
+* May shift into interception range while defending an ally.
+
+Clampjaw Drone
+
+* Must visibly approach an eligible enemy before beginning a physical capture.
+
+Ceiling Walker
+
+* Retains its elevated movement behavior; it does not automatically use ordinary ground-melee positioning.
+
+2.5 Visual testing
+
+Verify that melee approach:
+
+* Is visible on phone-sized layouts.
+* Never hides cards behind the player’s hand.
+* Correctly returns after knockback.
+* Does not cause damage before the enemy reaches attack range.
+* Remains synchronized after save/load.
+* Supports reduced-motion settings with clear positional state labels.
+
+⸻
+
+3. Common ejectable cockpit system
+
+All five new enemy mechs use physical cockpit escape equipment.
+
+Each chassis has its own ejection behavior, but the underlying rules should be shared.
+
+3.1 Cockpit subsystem
+
+Track:
+
+* Mech HP and subsystem damage.
+* Pilot ID and pilot status.
+* Cockpit integrity.
+* Hatch accessibility.
+* Ejection system functionality.
+* Ejection preparation state.
+* Ejection type and destination.
+* Cockpit Wedge status.
+* Reactor stability.
+* Communications status.
+* Whether the pilot has successfully escaped.
+* Whether the pilot is available for future reinforcement.
+
+3.2 Ejection sequence
+
+Normal sequence:
+
+1. Mech reaches an ejection threshold or receives an evacuation order.
+2. Pilot initiates escape preparation.
+3. Display cockpit activity and a warning.
+4. Give the player an appropriate response window.
+5. Validate ejection hardware and clearance.
+6. Launch or detach the cockpit.
+7. Create a separate escape-pod/capsule entity.
+8. Resolve its movement and pursuit.
+9. Record whether the pilot escapes, is captured, or is lost.
+
+Different mechs should require different positioning and preparation.
+
+3.3 Cockpit Wedge — preserve established decision
+
+Cockpit Wedge:
+
+* Works only on a real piloted cockpit.
+* Blocks cockpit opening and ejection while effective.
+* Does not block radio transmissions.
+* Does not prevent distress calls.
+* Does not automatically disable the mech.
+* Does not block reactor failure or detonation.
+* Does not stop a pilot from operating surviving controls.
+
+If a wedged mech explodes while its pilot remains inside, resolve the pilot’s exposure to the explosion.
+
+Do not treat Cockpit Wedge as guaranteed nonlethal capture.
+
+Also distinguish preventing an ejection from actually securing the pilot. A pilot trapped in an active mech may still fight and coordinate allies.
+
+3.4 Separated escape capsules
+
+After successful ejection, the cockpit becomes a separate target with appropriate properties.
+
+Possible actions:
+
+* Continue escaping.
+* Broadcast distress.
+* Seek allied recovery.
+* Attempt limited self-propulsion.
+* Hide behind cover.
+* Attempt emergency landing.
+
+The player can:
+
+* Pursue.
+* Disable.
+* Capture.
+* Ignore.
+* Destroy, using normal combat rules.
+
+Escape capsules must not automatically disappear from the battlefield unless they have actually reached their escape condition.
+
+⸻
+
+4. Five new enemy mechs
+
+4.1 Needleback Courier
+
+Role: Reconnaissance / messenger
+Class: Light mech
+Initial stats: 5 HP / 2 damage
+Movement: Fast
+Range: Light ranged
+Threat: Low individually, dangerous when escaping
+
+Visual design
+
+* Narrow torso.
+* Long reverse-jointed legs.
+* Thin armor.
+* Small sensor head.
+* Rear-mounted ejection capsule.
+* Visible escape rails.
+
+Combat behavior
+
+Needleback attempts to:
+
+* Scout the player’s position.
+* Mark targets for allied attacks.
+* Avoid prolonged direct combat.
+* Retreat behind larger teammates.
+* Broadcast discoveries.
+
+When heavily damaged, it favors escape rather than fighting to destruction.
+
+Ejection — Rear Rocket Slide
+
+At approximately 2 HP, the pilot prepares to eject.
+
+After the preparation window:
+
+* Rear cockpit detaches.
+* Rocket rails propel the capsule backward.
+* Capsule travels toward an available exit.
+* Pilot may transmit a retreat report.
+
+Team contribution
+
+A successful Needleback escape provides reconnaissance information to the surviving team.
+
+This may:
+
+* Improve the next team’s initial targeting information.
+* Increase the chance of an enemy intercept.
+* Help the pilot locate a replacement light mech.
+
+Capture rewards
+
+* Scout sensor salvage.
+* Reconnaissance records.
+* Potential information on upcoming patrols.
+* Prevention of that pilot’s replacement-mech return.
+
+⸻
+
+4.2 Latchback Brawler
+
+Role: Melee assault / bodyguard
+Class: Medium mech
+Initial stats: 9 HP / 3 melee damage
+Movement: Moderate
+Armor: Above average
+
+Visual design
+
+* Broad armored torso.
+* Oversized hydraulic fists.
+* Thick shoulder plating.
+* Small reinforced back-mounted cockpit.
+* Rotating shoulder ejection mechanism.
+
+Combat behavior
+
+Latchback is the primary showcase for downward melee closing.
+
+Behavior:
+
+1. Identify a valuable player unit.
+2. Move downward into closing range.
+3. Prepare heavy melee attack.
+4. Strike when engaged.
+5. Attempt to disrupt defensive structures or support machines.
+
+Priority targets may include:
+
+* Builder Drone.
+* Scrap Shepherd.
+* Mobile Containment Pod.
+* Inert Unfinished Warframe.
+
+Its priorities should react to actual accessibility and danger.
+
+Special attack — Hydraulic Rush
+
+A telegraphed melee advance that closes additional distance or increases impact, using existing action costs.
+
+Do not allow instant untelegraphed attacks from full distance.
+
+Ejection — Shoulder Cannon
+
+Cockpit rotates above the frame and launches upward.
+
+The capsule then descends at another battlefield location.
+
+A destroyed shoulder actuator or installed Cockpit Wedge may prevent successful launch.
+
+Team contribution
+
+Latchback attempts to protect the Relay Bishop.
+
+If the commander is threatened:
+
+* Brawler may intercept accessible attackers.
+* Prioritize closing with enemies near the Bishop.
+* Attempt to break allied captives free if within reach.
+
+Capture opportunities
+
+* Weaken its hydraulic movement.
+* Apply appropriate restraints.
+* Prevent ejection using cockpit equipment.
+* Secure the pilot separately from the chassis.
+
+An intact Brawler chassis offers useful heavy melee components.
+
+⸻
+
+4.3 Gantry Widow
+
+Role: Recovery / battlefield salvage
+Class: Medium industrial mech
+Initial stats: 8 HP / 2 damage
+Movement: Moderate
+Structure: Six crane-like legs
+
+Visual design
+
+* Wide spiderlike frame.
+* Long industrial lifting limbs.
+* Underslung armored cockpit.
+* Recovery winches.
+* Magnetic salvage claws.
+
+Combat behavior
+
+The Gantry Widow should feel like a battlefield recovery specialist rather than another damage dealer.
+
+It can:
+
+* Retrieve wounded allies.
+* Tow disabled machines.
+* Collect wreckage.
+* Recover escape capsules.
+* Help pilots reach replacement vehicles.
+* Repair or stabilize compatible equipment.
+
+Priority behavior
+
+When an allied pilot ejects nearby:
+
+1. Determine whether the capsule can be reached.
+2. Evaluate immediate danger.
+3. Move toward the capsule.
+4. Attach recovery equipment.
+5. Tow or carry it toward an escape route.
+6. Record a successful rescue if it exits.
+
+The player should be able to interrupt this process.
+
+Ejection — Underslung Drop Pod
+
+The legs spread, and the cockpit releases beneath the chassis.
+
+It drops onto protective skids and attempts ground-level escape.
+
+Obstructed terrain may prevent safe release.
+
+Team contribution
+
+Recovery multiplier.
+
+A functioning Gantry Widow increases the enemy team’s ability to:
+
+* Save pilots.
+* Recover damaged frames.
+* Reequip escaping pilots.
+* Preserve machine resources.
+
+Capturing or destroying it should make later enemy recovery attempts less reliable.
+
+Player interactions
+
+* Scrap Shepherd may compete with Gantry Widow for wreckage.
+* Clampjaw Drone can secure a disabled escape capsule.
+* Builder Drone may salvage a disabled Widow.
+* Memory Tap may reveal the Widow’s recovery destinations.
+
+⸻
+
+4.4 Kilnheart Breaker
+
+Role: Heavy assault / reactor threat
+Class: Heavy industrial combat mech
+Initial stats: 11 HP / 4 damage
+Movement: Slow
+Special: Reactor instability
+
+Visual design
+
+* Huge mining-derived frame.
+* Heavy drills.
+* Exposed orange heat exchangers.
+* Reinforced cockpit.
+* Rear-mounted emergency escape rocket.
+* Increasingly visible reactor heat as damaged.
+
+Combat behavior
+
+The Breaker:
+
+* Slowly closes for heavy melee attacks.
+* Breaks defensive cover.
+* Pressures entrenched player machines.
+* Uses drills against suitable structures.
+* Becomes progressively dangerous as its reactor fails.
+
+Downward melee movement
+
+Give Kilnheart an especially heavy closing animation.
+
+As it shifts downward:
+
+* Drills spin up.
+* Heavy footsteps and machinery sounds intensify.
+* Heat vents activate.
+* Card receives a clear imminent-melee indicator.
+
+Reactor instability
+
+Track reactor stability independently from ordinary HP.
+
+Proposed stages:
+
+Stable
+
+* No immediate danger.
+
+Heated
+
+* Damage and sustained operations increase instability.
+
+Critical
+
+* Detonation risk becomes visible.
+* Pilot prepares emergency ejection.
+
+Failure
+
+* Reactor explodes if not stabilized before the defined failure condition.
+
+Do not use arbitrary untelegraphed explosions.
+
+Ejection — Emergency Reactor Escape
+
+The cockpit attempts a rapid rocket launch before detonation.
+
+If wedged:
+
+* Ejection fails.
+* Pilot remains inside.
+* Communications continue unless independently damaged.
+* Reactor instability continues.
+* Explosion may kill the trapped pilot.
+
+Team contribution
+
+The Breaker is the team’s heavy enforcement unit.
+
+It is likely to be deployed when:
+
+* Team pursuit has escalated.
+* The commander believes the player is dangerous.
+* Other team members have failed.
+* The team wants to break a defended position.
+
+Capture opportunities
+
+A careful player may:
+
+* Disable drills.
+* Stabilize reactor.
+* Block ejection.
+* Secure chassis.
+* Extract pilot safely.
+* Preserve valuable heavy machinery.
+
+High reward, high risk.
+
+Do not allow the ordinary small Mobile Containment Pod to hold the full Breaker chassis.
+
+⸻
+
+4.5 Relay Bishop
+
+Role: Command / electronic warfare / pursuit leader
+Class: Medium command mech
+Initial stats: 7 HP / 2 damage
+Movement: Moderate
+Priority: Main story and strategic target
+
+Visual design
+
+* Tall command-oriented silhouette.
+* Several antenna and relay fins.
+* Central armored cockpit.
+* Teal sensor equipment.
+* Detachable flying command pod.
+* Relatively thin combat armor.
+
+Combat behavior
+
+Relay Bishop should not act like a normal combat enemy.
+
+It:
+
+* Coordinates allies.
+* Marks player targets.
+* Issues tactical orders.
+* Routes distress calls.
+* Responds to machine losses.
+* Organizes withdrawals.
+* Requests support.
+* Attempts to preserve its own escape capability.
+
+Ejection — Flying Command Pod
+
+The cockpit detaches as a powered flying capsule.
+
+Unlike most escape pods, it:
+
+* Has limited independent propulsion.
+* Can maneuver around obstacles.
+* Can continue transmitting commands.
+* May attempt to reach a rendezvous point.
+* Can be chased into a subsequent room if the route system permits.
+
+Critical distinction
+
+The Relay Bishop remains a command threat after ejection if its flying cockpit is operational.
+
+Capturing or physically stopping that capsule is a major objective.
+
+Cockpit Wedge prevents its initial separation but does not silence its communications.
+
+Special actions
+
+Target Coordination
+
+* Improves an allied attack or targeting decision.
+* Must be visible and have a defined resource/action cost.
+
+Recovery Order
+
+* Directs Gantry Widow toward a damaged teammate or escape capsule.
+
+Protect Commander
+
+* Encourages Latchback to defend the Bishop.
+
+Emergency Withdrawal
+
+* Orders vulnerable team members to retreat and regroup.
+
+Call Reinforcements
+
+* Requests assistance, subject to availability, cooldown, and Threat rules.
+
+Priority capture rewards
+
+Capturing the Bishop’s pilot or command systems should offer:
+
+* Current squad roster.
+* Recovery route information.
+* Replacement-mech locations.
+* Future pursuit reduction.
+* Possible team withdrawal negotiation.
+* An opportunity to permanently end this initial pursuit storyline.
+
+⸻
+
+5. New enemy Mech Team system
+
+5.1 Objective
+
+Create an initial persistent enemy team that operates across multiple rooms.
+
+The five selected mechs form the first authored team.
+
+Working name: Relay Section R-8
+Status: PROPOSED name, not established canon.
+
+This team should have:
+
+* Membership.
+* Pilots.
+* Functional mechs.
+* Command relationships.
+* Cohesion.
+* Threat contribution.
+* Recovery capability.
+* Shared knowledge about the player.
+* Reinforcement potential.
+* A story progression state.
+
+5.2 Initial roster
+
+Mech	Role	Tactical behavior
+Needleback Courier	Scout	Reconnaissance, marking, escaping
+Latchback Brawler	Defender	Melee assault, protecting commander
+Gantry Widow	Recovery	Rescue pilots and damaged equipment
+Kilnheart Breaker	Heavy assault	Pressure player, break defenses
+Relay Bishop	Commander	Coordinate pursuit and reinforcements
+
+Do not spawn all five every room.
+
+The team should appear progressively, with members available according to their real deployment and recovery states.
+
+5.3 Persistent pilot states
+
+Each pilot must have a stable ID.
+
+Track:
+
+* Active in mech.
+* Preparing ejection.
+* Ejected.
+* Escaping.
+* Recovered by allies.
+* Captured.
+* Contained.
+* Incapacitated or dead.
+* Seeking replacement mech.
+* Reequipped.
+* Withdrawn from pursuit.
+
+These are mutually compatible only where appropriate.
+
+A pilot captured and securely contained cannot also spawn in a replacement mech.
+
+5.4 Team cohesion
+
+Introduce a small Team Coordination value.
+
+Proposed scale: 0–3.
+
+3 — Coordinated
+
+* Bishop actively issuing orders.
+* Members support each other.
+* Recovery operations are efficient.
+* Team can execute combined tactics.
+
+2 — Disrupted
+
+* Some communications or command capabilities lost.
+* Team retains basic cooperation.
+* Special coordination actions become less frequent.
+
+1 — Fragmented
+
+* Members operate primarily on their own.
+* Recovery and covering behavior becomes inconsistent.
+* Complex coordinated actions unavailable.
+
+0 — Broken
+
+* No organized team pursuit.
+* Surviving enemies may retreat, negotiate, or act independently.
+* Team-specific coordinated reinforcement is disabled.
+
+The Bishop’s active command network should strongly affect this value.
+
+However, individual radios may continue to function.
+
+Destroying, capturing, or disabling the Bishop’s command role is not necessarily the same as disabling every radio.
+
+5.5 Coordination actions
+
+Implement an initial small team-command system.
+
+At most one special team coordination action per team round initially.
+
+Possible commands:
+
+Cover the Commander
+
+* Latchback prioritizes defending Bishop.
+
+Recover the Pilot
+
+* Gantry Widow prioritizes an endangered capsule.
+
+Mark the Target
+
+* Needleback improves a subsequent allied attack.
+
+Press the Attack
+
+* Kilnheart advances or prepares a heavy assault.
+
+Organized Withdrawal
+
+* Damaged team members attempt coordinated escape.
+
+Each command must respect existing action economy, target eligibility, and individual capabilities.
+
+Do not give team members extra free full turns solely because Bishop issued a command.
+
+⸻
+
+6. Escaped pilots and replacement mechs
+
+6.1 Core requirement
+
+Successfully escaped pilots may find replacement mechs and return as bonus enemies in the next few rooms.
+
+This is a major gameplay consequence of allowing cockpit escapes.
+
+Preventing that escape should prevent that pilot’s replacement reinforcement.
+
+6.2 Replacement window
+
+Proposed initial window:
+
+Next 1–3 room transitions following a successful escape.
+
+Eligible escaped pilots may:
+
+1. Reach a recovery location.
+2. Locate a suitable replacement mech.
+3. Receive repairs or equipment.
+4. Reappear during a later room.
+5. Continue participating in the pursuit.
+
+This must be generated from persistent pilot state rather than random anonymous spawns.
+
+6.3 Replacement rules
+
+* Pilot must genuinely escape.
+* Pilot cannot be captured or contained.
+* Replacement mech must be available.
+* The team must still have recovery or reinforcement resources.
+* A pilot cannot generate several simultaneous replacement appearances.
+* Replacement opportunities are bounded.
+* Do not spawn replacements after the pursuit is conclusively resolved.
+
+Default limit: one replacement opportunity per escaped pilot during this initial pursuit, with a maximum of two team-related bonus enemies in any single room.
+
+Use seeded randomness for selection and scheduling.
+
+6.4 Different pilot outcomes
+
+Needleback pilot escapes
+
+* Likely to return in another light scout.
+* May bring additional knowledge of the player’s position.
+
+Latchback pilot escapes
+
+* May return in a compatible melee frame.
+* Could seek revenge against the machine responsible for its earlier defeat.
+
+Gantry Widow pilot escapes
+
+* May return in another recovery vehicle.
+* Increases the chance of saving additional pilots.
+
+Kilnheart pilot escapes
+
+* May return in a substitute assault frame.
+* Should not automatically receive another volatile reactor machine.
+
+Relay Bishop pilot escapes
+
+* Retains or rebuilds command capability.
+* Can organize surviving members.
+* Has the highest strategic reinforcement potential.
+
+6.5 Capture and escape consequences
+
+Outcome	Pursuit consequence
+Pilot escapes in pod	Eligible to regroup and return
+Pilot captured	No replacement spawn while captive
+Pilot contained securely	No replacement spawn while captive
+Cockpit wedged, mech still operational	No physical escape yet; command/transmissions may continue
+Cockpit wedged, pilot later captured	Prevent regrouping and reduce team strength
+Mech destroyed, pilot successfully ejects	Pilot may still return
+Mech destroyed with pilot trapped	Resolve survival; no replacement if pilot is lost
+Pilot released and rejoins team	May become eligible to regroup again
+Bishop command role neutralized	Organized pursuit and reinforcement capacity reduced
+
+6.6 Threat consequences
+
+Use the existing Threat system where possible.
+
+Successful physical escape increases the team’s ability to pursue and reinforce.
+
+Preventing an escape reduces future Threat pressure by removing that pilot’s ability to regroup.
+
+Suggested baseline:
+
+* Escaped pilot successfully reaches recovery: +1 team pursuit pressure.
+* Captured pilot: -1 team pursuit pressure.
+* Gantry Widow captured or disabled: recovery operations weakened.
+* Bishop captured and command network neutralized: larger pursuit reduction.
+* Entire team withdrawn or broken: disable further team-specific pursuit bonuses.
+
+These should be applied as bounded state changes, not endlessly repeated per turn.
+
+Important: Cockpit Wedge by itself does not cancel an active pilot’s radio commands or instantly reduce existing Threat. The reduction comes from stopping successful regrouping and, when achieved, truly neutralizing the pilot’s combat or command participation.
+
+Previously confirmed reinforcements should not disappear retroactively without a specific recall event.
+
+⸻
+
+7. Enemy rescue and regrouping
+
+Gantry Widow recovery
+
+When an ally ejects, the Widow may attempt to recover the capsule.
+
+The player receives an opportunity to intervene.
+
+Possible outcomes:
+
+* Widow reaches capsule and escapes with it.
+* Player intercepts the Widow.
+* Player captures the capsule first.
+* Capsule escapes independently.
+* Recovery fails and the pilot remains stranded.
+
+Latchback protection
+
+When Bishop attempts escape, Latchback may:
+
+* Close into melee with the pursuer.
+* Intercept an eligible attack.
+* Block a narrow route.
+* Attempt to destroy a player restraint machine.
+
+Needleback reconnaissance
+
+A surviving Needleback may track where the player goes next.
+
+Its intelligence may influence future encounter setup, but must not reveal information the scout never acquired.
+
+Kilnheart intimidation
+
+If Kilnheart remains operational, the team may respond more aggressively to fortified positions.
+
+Its presence should not automatically increase all enemy damage.
+
+Use authored actions and visible telegraphs.
+
+⸻
+
+8. Initial story — Relay Section R-8
+
+Story premise
+
+The player enters a facility region monitored by a coordinated enemy mech section.
+
+At first, individual members appear to be ordinary patrols.
+
+After the first encounter, it becomes apparent that their pilots are communicating, recovering damaged machines, and pursuing the player.
+
+Relay Bishop controls the team’s pursuit operations.
+
+The player can continue fighting, evade the section, capture its pilots, disrupt its command system, or pursue Bishop directly.
+
+The initial story should be capable of ending with the team getting off the player’s back.
+
+The ending must follow the player’s actions rather than being a mandatory boss kill.
+
+8.1 Suggested episode structure
+
+Episode 1 — A Scout Gets Away
+
+Encounter focus: Needleback Courier
+
+The player encounters a recon mech.
+
+If heavily damaged, Needleback prepares to eject.
+
+Possible outcomes:
+
+Pilot escapes
+
+* Records player contact.
+* Reports to Bishop.
+* May seek a replacement scout.
+* Team pursuit becomes more focused.
+
+Pilot captured
+
+* Bishop receives no successful physical recovery of that pilot.
+* The player may gain reconnaissance intelligence.
+* Team must operate without the original scout unless a valid substitute exists.
+
+Mech disabled but pilot still present
+
+* Player has an opportunity for a controlled capture.
+* Continuing combat risks an eventual escape or destruction.
+
+Sample dialogue:
+
+Needleback: “Contact confirmed. Requesting instructions.”
+
+Bishop: “Maintain distance. Report their equipment.”
+
+Needleback: “They’re closing! I’m withdrawing!”
+
+Bishop: “Preserve the pilot. We can replace the frame.”
+
+That last line communicates the replacement-mech mechanic directly.
+
+Episode 2 — The Recovery Attempt
+
+Encounter focus: Gantry Widow
+
+The player encounters the team recovering wreckage or searching for a lost pilot.
+
+Possible approaches:
+
+Attack the recovery operation
+
+* Prevent equipment recovery.
+* Gain salvage.
+* Increase direct hostility.
+
+Capture the Widow pilot
+
+* Significantly weaken the team’s future recovery capability.
+
+Observe the recovery route
+
+* Reveal a maintenance or replacement-mech location.
+
+Avoid the team
+
+* Preserve resources.
+* Allow the recovery operation to proceed if it was already underway.
+
+Sample dialogue:
+
+Widow: “Recovery route clear. Deploying tow claws.”
+
+Bishop: “Bring back whoever you can.”
+
+Widow: “And the frames?”
+
+Bishop: “Pilots first. Machinery second.”
+
+Episode 3 — The Team Pushes Back
+
+Encounter focus: Latchback Brawler
+
+If the player has repeatedly disabled or captured team members, Latchback enters an intercept role.
+
+It uses the new downward melee closing mechanic aggressively.
+
+Possible outcomes:
+
+Defeat it
+
+* Reduce Bishop’s immediate protection.
+
+Capture its pilot
+
+* Prevent future Brawler reinforcements.
+
+Evade it
+
+* Preserve resources, but leave Bishop defended.
+
+Lure it away
+
+* Open a route to the commander.
+* May allow the player to avoid a prolonged heavy encounter.
+
+Sample dialogue:
+
+Latchback: “You’re the one taking our machines apart?”
+
+Bishop: “Do not engage without support.”
+
+Latchback: “Too late.”
+
+Episode 4 — The Furnace Arrives
+
+Encounter focus: Kilnheart Breaker
+
+The team commits its heavy assault unit if pursuit has escalated.
+
+The player faces:
+
+* Slow heavy melee pressure.
+* Damageable reactor systems.
+* An emergency cockpit escape.
+* A potentially catastrophic explosion.
+
+Possible outcomes:
+
+Destroy Breaker
+
+* Ends its heavy assault role.
+* May damage nearby equipment.
+
+Stabilize and capture
+
+* Obtain valuable intact machinery.
+* Prevent the pilot from regrouping.
+
+Allow ejection
+
+* Save the pilot from a possible explosion, but permit future regrouping if not intercepted.
+
+Wedge the cockpit
+
+* Stop ejection temporarily.
+* Force a risky decision about stabilizing the reactor before it explodes.
+
+Sample dialogue:
+
+Kilnheart: “Reactor temperature climbing.”
+
+Bishop: “Eject before it reaches critical.”
+
+Kilnheart: “Negative. I can still hold them.”
+
+Bishop: “That’s an order!”
+
+This creates a clear conflict between pilot stubbornness and team command.
+
+Episode 5 — Cut the Relay
+
+Focus: Relay Bishop
+
+The player finally obtains an opportunity to pursue the commander directly.
+
+Bishop attempts to preserve its command capability rather than fighting to the death.
+
+It may:
+
+* Withdraw behind allies.
+* Order a rescue.
+* Redirect the player into another room.
+* Prepare flying-cockpit ejection.
+* Request a ceasefire.
+* Attempt to regroup at a replacement-mech station.
+
+The player chooses how to end the pursuit.
+
+⸻
+
+9. Relay Bishop pursuit — Branching paths
+
+Create several ways to pursue Bishop.
+
+Branch A — Direct Assault
+
+The player attacks the Bishop’s current position.
+
+Typical obstacles:
+
+* Latchback bodyguard.
+* Defensive positioning.
+* Possible Gantry Widow recovery.
+* Bishop escape preparation.
+
+Outcomes
+
+Capture Bishop before ejection
+
+* Commander becomes a secured captive.
+* Team coordination collapses toward Fragmented or Broken.
+* Unlock a withdrawal demand or command-intelligence extraction.
+
+Bishop ejects
+
+* Begin flying-command-pod pursuit.
+* The fight may continue into a connected room.
+
+Bishop destroyed
+
+* Remove commander.
+* Surviving members may retreat, scatter, or briefly respond aggressively.
+* Do not assume all surviving pilots instantly surrender.
+
+Branch B — Disable the Network
+
+The player targets relay equipment or supporting command machinery.
+
+Potential steps:
+
+1. Locate command relay.
+2. Disable its power or physical antenna systems.
+3. Interrupt Bishop’s team command capability.
+4. Exploit reduced coordination to confront or bypass Bishop.
+
+Outcomes
+
+* Team Coordination decreases.
+* Complex team commands become unavailable.
+* Reinforcement operations become less efficient.
+* Individual pilots may still use functioning radios and attempt independent actions.
+
+This route should be available without requiring the player to kill Bishop.
+
+Branch C — Hunt the Flying Cockpit
+
+Bishop successfully ejects.
+
+A special pursuit encounter begins.
+
+The flying capsule:
+
+* Maneuvers between obstacles.
+* Attempts to maintain altitude.
+* Transmits instructions.
+* May request Gantry Widow recovery.
+* Can escape into the next connected area if not stopped.
+
+Player responses
+
+Pursue immediately
+
+* Chance to intercept the capsule before it leaves.
+
+Disable propulsion
+
+* Force a landing, creating a capture opportunity.
+
+Send Ceiling Walker
+
+* Attempt to reach a suitable elevated interception point.
+
+Use available ranged control
+
+* Disable capsule movement while preserving pilot if successful.
+
+Allow escape and track
+
+* Follow its recovery destination.
+* Risk facing reequipped enemies later.
+
+Capture result
+
+If the flying cockpit is successfully grounded, the pilot still must be secured.
+
+The cockpit itself is not equivalent to a guaranteed captive.
+
+Branch D — Intelligence-Led Interception
+
+The player captures Needleback or Gantry Widow and uses compatible intelligence extraction.
+
+Possible reward:
+
+* Learn Bishop’s planned rendezvous location.
+* Discover a preferred recovery route.
+* Identify a relay weak point.
+* Learn when Bishop will move.
+
+The player can intercept the commander before its normal planned confrontation.
+
+The encounter should reward earlier captures with a better starting position, not an automatic victory.
+
+Branch E — Negotiated Withdrawal
+
+The player acquires leverage through capture, disabling command infrastructure, or demonstrating that continued pursuit is unsustainable.
+
+Possible prerequisites:
+
+* Bishop pilot captured.
+* Sufficient team members captured or neutralized.
+* Command network disrupted.
+* Replacement-mech resources substantially reduced.
+* Bishop voluntarily offers withdrawal after a failed recovery operation.
+
+Dialogue choices
+
+Demand complete withdrawal
+
+* Team ceases organized pursuit if the demand succeeds.
+* Clear team-specific reinforcement queue.
+
+Offer exchange
+
+* Trade compatible recovered equipment or release a captive under agreed conditions.
+* End pursuit through a negotiated withdrawal.
+
+Demand salvage access
+
+* The team withdraws from a specific route while preserving some resources.
+* Player gains safe passage but not necessarily a permanent alliance.
+
+Reject negotiations
+
+* Continue combat or pursuit.
+
+Avoid guaranteeing negotiation success from a single arbitrary dialogue choice. Use visible leverage or deterministic branch requirements.
+
+⸻
+
+10. Getting the team off the player’s back
+
+Implement explicit pursuit-resolution states.
+
+Active Pursuit
+
+* Team is hunting the player.
+* Reinforcements and coordinated encounters may occur.
+
+Disrupted Pursuit
+
+* Command or recovery compromised.
+* Reduced reinforcement capability.
+
+Withdrawal Negotiated
+
+* Team agrees to stop organized pursuit.
+* Remaining pilots depart or stand down as appropriate.
+
+Team Broken
+
+* Cannot maintain coordinated operations.
+* Organized pursuit ends, even if an isolated hostile survivor exists.
+
+Commander Captured
+
+* Bishop is under player control.
+* Organized team command ceases unless an explicitly authored successor is established.
+* Follow-up choices may lead to negotiated withdrawal.
+
+Commander Escaped
+
+* Bishop may regroup and continue pursuit if it can reach recovery resources.
+
+Important resolution rule
+
+Once organized pursuit is conclusively ended:
+
+* Cancel future team-specific bonus reinforcement spawns.
+* Remove unresolved replacement-mech opportunities that require continued team participation.
+* Preserve already-existing enemies and normal unrelated encounter content.
+* Record the ending for narrative continuity.
+
+Do not continue randomly spawning Relay Section R-8 members after the player has successfully ended that story branch.
+
+⸻
+
+11. Suggested story flag system
+
+Use persistent, deterministic flags.
+
+Example fields:
+
+* relayTeamIntroduced
+* relayTeamPursuitState
+* relayTeamCoordination
+* relayTeamRecoveryCapacity
+* bishopPilotStatus
+* bishopCommandOperational
+* bishopFlyingPodActive
+* needlebackPilotStatus
+* latchbackPilotStatus
+* widowPilotStatus
+* kilnheartPilotStatus
+* teamKnowsPlayerLocation
+* knownRecoveryRoute
+* replacementMechOpportunities
+* negotiationLeverage
+* teamWithdrawalAgreed
+
+Store per-pilot state once and derive tactical availability from it rather than duplicating conflicting state across independent systems.
+
+The story should re-evaluate available branches using those flags.
+
+⸻
+
+12. Additional narrative variation
+
+Write short variations for the first team according to events.
+
+A. Capturing multiple pilots
+
+Bishop becomes more cautious.
+
+It may prioritize negotiation, recovery, or a targeted attempt to free captives.
+
+Sample:
+
+Bishop: “You’ve taken enough of my people. What do you want?”
+
+Player options:
+
+* “Call them off.”
+* “Give me the route codes.”
+* “Come here yourself.”
+* “Keep sending machines. I’ll keep taking them.”
+
+Each option should produce a distinct, mechanically supported result or branch.
+
+B. Gantry Widow lost
+
+The team loses an important recovery capability.
+
+Sample:
+
+Needleback: “Where’s recovery?”
+
+Bishop: “There is no recovery. Reach the exit on your own.”
+
+The absence of the Widow should affect future escape and rescue opportunities.
+
+C. Latchback captured
+
+Bishop loses a defensive escort.
+
+Sample:
+
+Bishop: “Brawler, acknowledge.”
+
+System: “PILOT UNAVAILABLE.”
+
+Bishop: “…Understood. Changing formation.”
+
+Team behavior should actually change.
+
+D. Kilnheart reactor catastrophe
+
+The team reacts to the explosion.
+
+Possible consequences:
+
+* Increased fear.
+* Temporary aggressive retaliation.
+* Reduced willingness to deploy another unstable heavy unit.
+* New wreckage hazards.
+
+Do not force every survivor to react identically.
+
+E. Bishop cornered
+
+The commander may abandon its chassis to preserve the command capsule.
+
+Sample:
+
+Bishop: “I’m not dying in this machine.”
+
+System: “COCKPIT RELEASE READY.”
+
+Bishop: “Section, cover my withdrawal.”
+
+If wedged:
+
+System: “COCKPIT RELEASE OBSTRUCTED.”
+
+Bishop: “What? No—remove it! NOW!”
+
+Bishop may continue transmitting and directing allies while the cockpit remains trapped.
+
+⸻
+
+13. Integration with capture cards
+
+Support the previous capture package where those cards are implemented.
+
+Clampjaw Drone
+
+* Holds exactly one captive at a time.
+* Can secure eligible weakened pilots, capsules, and compatible machines.
+* Cannot automatically immobilize every heavy mech.
+* Can intercept a stopped escape capsule.
+
+Industrial Lockbands
+
+* Can reinforce secured targets.
+* May help stop recovered pilots escaping.
+* Do not automatically reach pilots inside inaccessible cockpits.
+
+Cockpit Wedge
+
+* Prevents ejection when correctly installed.
+* Does not stop transmissions.
+* Keeps a pilot inside during reactor failure unless another escape route succeeds.
+
+Mobile Containment Pod
+
+* Holds one compatible captive.
+* Can contain an extracted pilot or eligible small machine.
+* Cannot contain entire medium or heavy combat mechs.
+
+Memory Tap
+
+* Can reveal machine logs, recovery destinations, squad routing, or command information from valid secured sources.
+* Does not automatically access an unrestrained human pilot’s thoughts.
+
+Improvised Army
+
+Builder Drone
+
+* Repairs captured compatible machinery.
+* Supports safe extraction operations when authorized.
+
+Scrap Shepherd
+
+* Recovers disabled chassis and wreckage.
+* Competes with Gantry Widow over recoverable mechanical resources.
+
+Panic Jack
+
+* Protects valuable capturing machines during securing procedures.
+
+Unfinished Warframe
+
+* Provides heavy combat pressure while support machines perform capture operations.
+
+Preserve existing card limitations and action costs.
+
+⸻
+
+14. UI and feedback
+
+Enemy mech cards
+
+Display:
+
+* Mech class.
+* HP.
+* Pilot presence.
+* Cockpit integrity.
+* Ejection readiness.
+* Active target.
+* Team role.
+* Melee closing state when relevant.
+
+Team status
+
+Add a compact team-status display during related encounters.
+
+Example:
+
+RELAY SECTION R-8
+
+* Coordination: Disrupted
+* Commander: Active
+* Recovery: Unavailable
+* Escaped Pilots: 1
+* Replacement Threat: Possible
+* Pursuit: Active
+
+Avoid crowding the main card field.
+
+Allow expansion for pilot and mech details.
+
+Ejection visualization
+
+Each mech needs a distinct cockpit separation animation.
+
+Use modular animations or simple part transitions when possible:
+
+* Needleback: Rear slide.
+* Latchback: Shoulder rotation and launch.
+* Gantry Widow: Underslung drop.
+* Kilnheart: Emergency rocket departure.
+* Relay Bishop: Flying capsule separation.
+
+For blocked ejection, display a visible failure and retain the pilot in the chassis.
+
+Narrative presentation
+
+Make radio dialogue concise and responsive.
+
+Do not repeat introductory dialogue after the team has already met the player.
+
+A captured pilot must not continue speaking as though it escaped and returned to a new mech.
+
+⸻
+
+15. Determinism and exploit protection
+
+All new systems must be seedable and reproducible.
+
+Ejection
+
+* One active ejection attempt per cockpit at a time.
+* No duplicate pilot entities.
+* Cockpit remains attached if blocked.
+* Successful separation transfers pilot ownership to capsule entity.
+* Destroyed chassis cannot also retain the same pilot after successful ejection.
+
+Replacement mechs
+
+* No duplicate pilot appearances.
+* No replacement from a captured or dead pilot.
+* No unlimited reinforcement loops.
+* No repeated reward farming from recycled chassis.
+* No reinforcements after conclusive team withdrawal.
+* Limited replacement window.
+
+Team AI
+
+* One coordination action per team round by default.
+* Commands require eligible allies.
+* Recovery orders require valid targets.
+* Commander incapacitation immediately updates available commands at the next legal scheduling point.
+* Team state persists across rooms and save/load.
+
+Branching story
+
+* Only valid branches appear.
+* Once-only rewards remain claimed.
+* Pursuit endings do not reset.
+* Dialogue reflects real pilot and mech status.
+* No story path requires an enemy that has already been permanently lost.
+* Every branch has a resolvable combat, retreat, capture, or withdrawal outcome.
+
+⸻
+
+16. Implementation phases
+
+Phase 1 — Melee closing
+
+Implement downward card movement, proximity states, engagement restrictions, and responsive animations.
+
+Test with existing melee enemies before introducing the new Brawler and Breaker.
+
+Phase 2 — Five mech enemies
+
+Implement all selected mechs with their core AI, stats, visual identities, and special attacks.
+
+Phase 3 — Ejectable cockpit system
+
+Implement cockpit states, preparation, blocked ejection, physical capsule separation, pilot pursuit, and recovery.
+
+Test each of the five ejection methods.
+
+Phase 4 — Persistent Mech Team
+
+Implement roster state, coordination levels, team commands, pilot tracking, rescue operations, and cross-room persistence.
+
+Phase 5 — Replacement mechs and Threat
+
+Implement pilot regrouping, replacement opportunities, bonus encounters during subsequent rooms, prevention through capture, and pursuit reduction.
+
+Phase 6 — Relay Bishop story branches
+
+Implement the five main story episodes and all Bishop pursuit approaches.
+
+Author the radio dialogue, conditional reactions, and resolution endings.
+
+Phase 7 — Integration and validation
+
+Test capture cards, Improvised Army interactions, team coordination, ejection prevention, story flags, and reinforcement scheduling together.
+
+⸻
+
+17. Required testing situations
+
+Melee
+
+1. Latchback starts distant and moves downward.
+2. Latchback attacks only once in range.
+3. Kilnheart closes with cover in its path.
+4. Knockback increases separation and shifts the card upward.
+5. Clampjaw approaches a weakened enemy.
+6. Movement and melee state survive save/load.
+
+Ejection
+
+7. Needleback ejects along rear rails.
+8. Latchback rotates its cockpit before launch.
+9. Gantry Widow drops its cockpit beneath its body.
+10. Kilnheart attempts emergency reactor escape.
+11. Relay Bishop becomes a flying command capsule.
+12. Cockpit Wedge blocks all five compatible ejections.
+13. Wedged pilots retain communications.
+14. Wedged pilots remain vulnerable to explosion.
+15. Successfully ejected pilots no longer occupy abandoned chassis.
+
+Mech Team
+
+16. Bishop issues a command to a valid ally.
+17. Latchback protects Bishop when eligible.
+18. Gantry Widow attempts pilot recovery.
+19. Needleback provides reconnaissance information.
+20. Kilnheart performs its heavy assault role.
+21. Team coordination decreases after command disruption.
+22. Individual surviving radios remain usable when applicable.
+
+Reinforcements
+
+23. Escaped Needleback pilot can return in a replacement.
+24. Captured Needleback pilot cannot return.
+25. Successfully recovered pilots can regroup.
+26. Captured Gantry Widow weakens team recovery.
+27. A successful escape can create bonus enemies within the configured room window.
+28. Replacement limits prevent infinite respawning.
+29. A team withdrawal prevents further team-specific reinforcement.
+
+Branching story
+
+30. Player follows normal five-episode progression.
+31. Early Bishop capture skips incompatible later pursuit episodes.
+32. Bishop ejection opens flying-cockpit pursuit.
+33. Intelligence enables early interception.
+34. Network sabotage disrupts coordination.
+35. Negotiated withdrawal ends pursuit.
+36. Defeating Bishop without killing all members can still break coordinated pursuit.
+37. Captured pilots never reappear in dialogue as active team members.
+38. All endings survive save/load.
+
+⸻
+
+18. Acceptance criteria
+
+This build is ready for an initial playable test when:
+
+1. Melee cards visibly shift downward when approaching melee range.
+2. Melee proximity affects valid attacks, not just appearance.
+3. All five selected enemy mechs have distinctive combat behavior.
+4. All five have functioning ejectable cockpits.
+5. Cockpit Wedge blocks physical ejection but never automatically blocks communications.
+6. The player’s decisions determine whether pilots escape, are captured, or remain trapped.
+7. The new Mech Team system tracks roster, pilots, command, and recovery across rooms.
+8. Relay Bishop actually coordinates allied mechs.
+9. Gantry Widow can recover allied escape capsules.
+10. Escaped pilots can generate bounded replacement-mech encounters in subsequent rooms.
+11. Preventing successful escape stops those replacement opportunities and reduces future pursuit pressure.
+12. Relay Bishop can be pursued through combat, interception, network disruption, or negotiation.
+13. The player has at least one legitimate nonlethal way to end the organized pursuit.
+14. Story branches and dialogue react correctly to real combat outcomes.
+15. Existing combat, card systems, Threat, and navigation remain functional.
+
+⸻
+
+19. OPEN / TUNE LATER
+
+Preserve these unresolved decisions:
+
+* Final enemy stats and damage.
+* Exact melee approach distance and animation timing.
+* Ejection preparation duration.
+* Replacement-mech resource budgets.
+* Team coordination modifiers.
+* Threat values.
+* Number of subsequent rooms affected by each escaped pilot.
+* Replacement chassis variety.
+* Whether additional team members may join later.
+* Whether some captured pilots may later be exchanged.
+* Bishop’s final story identity and longer-term narrative role.
+* Whether the team can become neutral or allied in future content.
+
+Do not turn these proposed values into established canon without explicit approval.
+
+⸻
+
+Final implementation priority
+
+The Relay Bishop must be the centerpiece.
+
+The five mechs should operate as parts of one believable tactical organization.
+
+The player should discover that simply destroying enemy machines is not enough. Pilots escape, the recovery team retrieves them, and some return in new frames.
+
+Preventing escapes changes what happens in later rooms.
+
+Capturing the recovery mech changes the team’s survivability.
+
+Disabling the command network changes how the survivors fight.
+
+Pursuing the flying Relay Bishop cockpit creates a chance to end the entire operation.
+
+The intended outcome is a persistent enemy team whose pursuit can be escaped, dismantled, negotiated away, or decisively defeated through the player’s choices—not a collection of unrelated fights.

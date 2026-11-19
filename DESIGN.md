@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.3)
+# Mechanica Descent — build notes (v0.4)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -12,7 +12,36 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/game/events.ts` | Wrong Hallway and its rooms, Patient Machine, Assembly Yard, Drone Remembers |
 | `src/game/engine.ts` | Room flow, Decon, turns, reducer, legal actions, QA hooks |
 | `src/game/bot.ts` | Heuristic bot (sim) and random bot (fuzz) |
-| `src/game/tests/` | 93 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/capture.ts` | Restraint integrity, Clampjaw, Lockbands, Containment Pod, custody, Memory Tap |
+| `src/game/pursuit.ts` | Melee closing, ejection and capsules, the five R-8 chassis, Kilnheart's reactor, Bishop's orders |
+| `src/game/team.ts` | Relay Section R-8's persistent state: pilots, coordination, replacements, pursuit endings |
+| `src/game/story.ts` | Custody, the R-8 episodes and negotiation, The Prisoner That Repairs Itself |
+| `src/game/team-text.ts` | R-8 radio dialogue (verbatim from the brief) and the Prisoner's screen tells |
+| `src/game/tests/` | 190 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.4 adds
+
+### Kept from Prompt 6
+
+The Salvage Leech's second pull strips 1 Armor; on a host with no Armor it falls back to making the host take +1 from every hit.
+
+### Brief 3: capture, containment and the Prisoner
+
+- **Clampjaw Drone, Industrial Lockbands, Cockpit Wedge, Mobile Containment Pod, Memory Tap**: all five cards.
+- **Restraint Integrity** 0–100, shown as stable / strained / CRITICAL. Restrained machines stop fighting and strain every turn. Nothing escapes from a stable restraint without warning.
+- **One captive each**: a Clampjaw and a Pod hold a single captive id. Transfers are atomic.
+- **Custody**: when a fight ends with machines still restrained, each one is resolved in turn: keep it (needs a free holder), tap it, dismantle it, or let it go.
+- **The Prisoner That Repairs Itself**: a multi-beat encounter. Its screen shows only ellipses and punctuation, with a bracketed sound caption. Each beat shows what it is about to do before you choose.
+
+### Brief 4: melee closing, ejectable mechs, Relay Section R-8
+
+- **Melee closing**: melee enemies are Distant, Closing or Engaged. Their card slides down the lane and they cannot hit until Engaged. Stun, foam and sealant stop the advance. Crane Hook knocks them back a step.
+- **Five mechs**: Needleback Courier, Latchback Brawler, Gantry Widow, Kilnheart Breaker, Relay Bishop, at the brief's stats.
+- **Ejection**: each prepares for a turn (telegraphed), then the cockpit leaves as a capsule unit carrying the pilot. The capsule stays on the field for 1 or 2 turns and can be shot down, stopped, grabbed, or towed out by the Widow.
+- **Persistent team**: five pilots with stable ids and one status each. Coordination (0–3), recovery, pursuit state and every spawn are derived from those statuses.
+- **Replacements**: an escaped pilot returns once, within 1–3 rooms, in a replacement frame, at most two per room. Captured, dead and withdrawn pilots never spawn or speak.
+- **Story**: five episodes in order from room 2, then Cut the Relay with five approaches (assault, network, flying pod, interception, negotiation).
+- **Endings**: withdrawal negotiated, team broken, or commander captured. Each one cancels all further team spawns.
 
 ## What v0.3 adds
 
@@ -68,7 +97,26 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 | Wrong Hallway trigger | The card arms it for the current room. Rooms also go wrong on their own 8% of the time. |
 | Neutral maintenance machines | They exist in events. In fights the Faulty Access Badge applies to Drones only: they hold fire for 2 turns, then one check. |
 | Enemy complications (brief 2 §12.5) | Mapped onto existing enemies: Drones scavenge wrecks, jam Builders and cut Leeches off; Lights go for an inert Warframe; Level 2s and Zombies prioritize an active Warframe and shake off Gun Nests. No new enemy units. |
-| Animations | A mood word on the unit sheet and a log line. No art exists yet. |
+| Capture eligibility (brief 3) | Small and medium machines at 3 HP or less, or disabled (stunned, foamed, sealed). Heavy frames (Level 2, Zombie, Kilnheart, Patient, Relay) are refused, and the unit sheet says so. |
+| "Consumes a player action" | Playing the card is the action. Lockbands and Wedge cost Scrap, not Energy. |
+| Fight end with captives | A fight ends when every enemy left is secured. Capsules on the field keep it going until they leave or are dealt with. |
+| Pilot custody vs chassis custody | A restrained R-8 frame without a Wedge still ejects its pilot, during the fight or as you reach for the hatch. With a Wedge, the pilot can be pulled out at custody, if a holder is free. |
+| Pod contents | A pilot, a capsule, a Drone, Powered Armor, or the Prisoner. It travels between rooms, unlike other structures. |
+| Pod upkeep | Charged automatically at the start of every third occupied turn. You can cut power. Each missed cycle costs 20 seal; at 0 the captive is out. |
+| Held captives between fights | Stable unless the holder is destroyed or the Pod loses power. Only the Prisoner keeps working on the Pod from inside. |
+| Memory Tap choices | Hazard Scan reveals the next room; Weakness Analysis makes one machine in the next fight take +1; Cache Trace pays at the next Tech Stop (so a cache always has a real place). Corrupted reads are labeled UNVERIFIED. |
+| Tapping pilots | Cockpits and capsules can be read. A pilot pulled out of a cockpit is a person and cannot. |
+| Supervised Conversion | Exists for the Prisoner only (Recruit Under Supervision). |
+| Melee range (brief 4) | One number per melee unit, used for both the rule and the slide. Infested start Closing; Zombie, Latchback and Kilnheart start Distant. |
+| Ejection response window | The preparing turn, plus the 1–2 turns the capsule is on the field. |
+| Destroyed before ejecting | 50% the cockpit blows clear as a damaged capsule; otherwise the pilot is lost. Wedged: 50% survives pinned in the wreck. Inside a reactor blast: 10%. All three are `RULES` values. |
+| Kilnheart reactor | Heated at 7 HP, Critical at 4. Critical counts down 2 turns to detonation, shown on the token. Foam or sealant cools it one stage. |
+| Bishop's orders | One per round, only with coordination 2+, and it costs Bishop its own action: Cover the Commander, Recover the Pilot, Organized Withdrawal, Press the Attack. |
+| Flying command pod | Crane Smash and Crane Hook cannot reach it; everything else can. If it leaves, the next room opens Hunt the Flying Cockpit. |
+| Network branch | A Command Relay unit (6 HP, 1 Armor) with two Drones replaces that room's pack. Destroying it drops coordination by 2. |
+| Negotiation | Opens at leverage 2; "call them off" works at 3. Leverage: +1 per captured pilot, +2 for Bishop, +1 for the Widow lost, +1 for the relay cut. |
+| First contact | The Needleback takes a Light's place in room 2's pack, so it looks like an ordinary patrol. |
+| Animations | The melee slide and the Prisoner's screen are real CSS animation with reduced-motion fallbacks. Everything else is a status word and a log line. No art exists yet. |
 | Madness thresholds | The briefs assume 5 on a 0–10 scale. Madness here rarely passes 6, so "high" is 3. |
 
 ## Readings I had to choose
@@ -83,6 +131,17 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 
 ## Not done, or thinner than the brief
 
+- **Sound**: none. Every audio cue in the briefs is a bracketed caption instead.
+- **Distinct ejection animations**: each chassis has its own ejection text and capsule behavior. There is no per-chassis animation.
+- **Clampjaw commands**: Apprehend, Transfer and Release exist. Reinforce is automatic while it holds. Hold and Retreat have no positions to mean anything.
+- **Lockbands on pilots, band damage as a separate track**: bands are a count on the restraint, not damageable equipment.
+- **Enemy rescue of captives**: the Latchback targets a Clampjaw or Pod that is holding someone. No other rescue behavior.
+- **Subsystem damage (actuators, hatch, sensors)**: only the Wedge and the reactor are modeled. A "destroyed shoulder actuator" cannot happen.
+- **Clampjaw closing in visibly**: its sheet says "moving in"; it has no slide of its own. Panic Jack does not shift either.
+- **Needleback retreating behind teammates, intel accuracy limits**: it marks, shoots and ejects. Its report gives R-8 sharper aim at the start of their next fight.
+- **Prisoner variants and piloted variant**: one behavior profile.
+- **Captives identifying you to their faction, exchanges beyond the one negotiation option**: not built.
+
 - **Per-unit art and animation**: none. All feedback is text.
 - **Shepherd commands**: Hold and Feed the Warframe exist. Collect Selected, Retreat and Unload do not; there are no positions for them to mean anything.
 - **Ceiling Walker**: Hunt, Drop, Climb and Scout exist. Perch and Scuttle do not.
@@ -93,24 +152,24 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 
 ## Balance, as measured
 
-`npm run sim` plays 1,500 runs per row with a simple heuristic bot. A person should beat these. The bot uses machine cards crudely.
+`npm run sim` plays 1,200 runs per row with a simple heuristic bot. The bot does not capture anyone and barely uses machines.
 
 | Bot | Past room 2 | Reached first Decon | Walked out clean |
 | --- | --- | --- | --- |
-| Careful, Shabby Lootbox | 59% | 44% | 44% |
-| Careful, AM Mine | 72% | 51% | 51% |
-| Careful, Lil Robobuddy | 57% | 45% | 45% |
-| Careful, old cards only | 56% | 42% | 42% |
-| Greedy (red hall, strips everything) | 66% | 62% | 62% |
-| Careful, goes deeper once | 57% | 45% | 32% |
-| Greedy, goes deeper twice | 66% | 62% | 40% |
+| Careful, Shabby Lootbox | 72% | 56% | 56% |
+| Careful, AM Mine | 81% | 63% | 63% |
+| Careful, Lil Robobuddy | 73% | 63% | 63% |
+| Careful, old cards only | 71% | 59% | 59% |
+| Greedy (red hall, strips everything) | 86% | 70% | 70% |
+| Careful, goes deeper once | 73% | 63% | 38% |
+| Greedy, goes deeper twice | 86% | 70% | 46% |
 
 What that says:
 
-- The AM Mine does the job asked of the loadout: 13 points more runs get past room 2. The Lootbox and Robobuddy barely move early survival; Robobuddy pays in Scrap instead.
-- Greedy still beats careful on the first leg.
-- The deeper legs are survivable about two times in three for a bot that reached them. That is probably too gentle.
-- The bot gains almost nothing from machine cards, so these numbers say little about whether the Improvised Army is too strong or too weak. That needs hands.
+- **The first leg got about 10 points easier than v0.3.** Melee closing gives you a free turn against the Infested, which was the main killer in rooms 1 and 2.
+- **The second leg got harder**: about 6 in 10 bots that go deeper once come back, down from 7 in 10. That is R-8 arriving in force.
+- **The bot kills pilots; it never captures them.** Across all rows it captured a pilot in well under 1% of runs, so capture, custody, negotiation and the nonlethal endings are verified by tests and by hand, not by the sim.
+- Greedy still beats careful.
 
 ## Open questions carried over
 
@@ -149,3 +208,13 @@ The two briefs are stored verbatim:
 **Prompt 5 (2026-11-18)**
 
 > Push. Armor will deduct one point of damage from every damage instance. Add Powered Armor unit with only 3 health and 1 armor.
+
+**Prompt 6 (2026-11-19)**, with two attached briefs
+
+> @"/mnt/user-data/uploads/311fb14f-attachment.txt" @"/mnt/user-data/uploads/436e95f9-attachment.txt" Keep the fallback
+> 2 briefs for next update
+
+"Keep the fallback" answers the question asked after Prompt 5: whether the Leech's second pull should keep making an unarmored host take +1. "2 briefs for next update" was read as an instruction to build both now as v0.4.
+
+- `docs/briefs/03-capture-containment-and-the-self-repairing-prisoner.txt`
+- `docs/briefs/04-ejectable-mechs-melee-closing-and-the-pursuit-team.txt`

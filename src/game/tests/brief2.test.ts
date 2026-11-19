@@ -77,6 +77,7 @@ describe("Panic Jack", () => {
     s = cmd(s, ally(s, "jack"), "protect", j(s));
     foe(s).maxHp = 50;
     foe(s).hp = 50;
+    foe(s).prox = 2;
     s = findSeed(
       (seed) => { const t = structuredClone(s); t.rng = seed; foe(t).plan = { type: "attack", targetUid: j(t).uid, dmg: 2 }; return end(t); },
       (t) => t.log.some((l) => l.includes("throws itself")),
@@ -368,6 +369,8 @@ describe("loadout and descent", () => {
     expect(all.filter((c) => c.id === "ROT").length).toBe(2);
     expect(s.deck.some((c) => c.id === "ROT")).toBe(false);
     j(s).hp = j(s).maxHp = 40;
+    foe(s).prox = 2;
+    foe(s).plan = { type: "attack", targetUid: j(s).uid, dmg: 2 };
     s = findSeed((seed) => { const t = structuredClone(s); t.rng = seed; return end(t); }, (t) => j(t).hp < 40);
     expect(s.contamination).toBe(7);
   });

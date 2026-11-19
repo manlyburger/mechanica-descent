@@ -1,6 +1,7 @@
+import type { CustodyItem } from "./capture";
 import { RULES, type CardId, type ChoiceId, type Phase, type Side, type UnitKind } from "./data";
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface Leech {
   cardUid?: string; // absent for temporary leeches
@@ -13,7 +14,9 @@ export interface Leech {
 
 /** What an enemy has decided to do this turn. Rolled at the start of the player's turn so it can be shown. */
 export interface Plan {
-  type: "attack" | "missile" | "purge" | "tear" | "removeLeech" | "scavenge" | "jam" | "shake" | "break" | "hold" | "disabled";
+  type:
+    | "attack" | "missile" | "purge" | "tear" | "removeLeech" | "scavenge" | "jam" | "shake" | "break" | "hold" | "disabled"
+    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate";
   targetUid?: string;
   dmg?: number;
   note?: string;
@@ -88,6 +91,87 @@ export interface Unit {
   // bulkhead / gun nest
   guards?: string;
   clamp?: string;
+
+  // melee closing: 0 Distant, 1 Closing, 2 Engaged
+  prox?: number;
+  // ejectable cockpit
+  pilot?: string; // stable pilot id; absent once the pilot has left
+  ejecting?: boolean; // preparing to eject: launches on its next action
+  wedge?: number; // turns of Cockpit Wedge left
+  refused?: boolean; // Kilnheart has already ignored one eject order
+  replacement?: boolean; // a substitute frame
+  // Kilnheart reactor: 0 Stable, 1 Heated, 2 Critical
+  heat?: number;
+  fuse?: number; // turns to detonation once Critical
+  // escape capsule
+  exitIn?: number;
+  flying?: boolean;
+  towed?: boolean;
+  role?: string; // which chassis a capsule came from
+  guardBy?: string; // Latchback covering this unit this turn
+  regen?: number;
+  // capture
+  cap?: Restraint;
+  // clampjaw
+  apprehend?: string; // ordered target
+  holding?: string; // captive id carried between fights
+  // pod
+  powerOff?: boolean;
+  occupied?: number; // occupied turns since the last upkeep
+  podIntegrity?: number;
+}
+
+export interface Restraint {
+  state: "securing" | "secured";
+  integrity: number; // 0-100
+  bands: number;
+  by?: string; // the Clampjaw holding it
+}
+
+/** A captive carried between fights by exactly one holder. */
+export interface Captive {
+  id: string;
+  kind: UnitKind;
+  /** Set when the captive is a person: the pilot id. */
+  pilot?: string;
+  label: string;
+  holder: string; // uid of the Clampjaw or Pod
+  bands: number;
+  tapped: boolean;
+  hp: number;
+}
+
+export type PilotStatus = "active" | "escaped" | "recovered" | "captured" | "dead" | "withdrawn";
+
+export interface Pilot {
+  id: string;
+  role: string;
+  status: PilotStatus;
+  /** Rooms until this pilot comes back in a replacement frame. */
+  returnsIn?: number;
+  /** The one replacement opportunity has been used. */
+  replaced: boolean;
+}
+
+export type Pursuit = "dormant" | "active" | "disrupted" | "withdrawn" | "broken" | "commanderCaptured";
+
+export interface Team {
+  introduced: boolean;
+  pursuit: Pursuit;
+  pilots: Pilot[];
+  episode: number; // next authored episode, 1-5
+  nextAt: number; // room the next episode may run in
+  pressure: number;
+  leverage: number;
+  networkCut: boolean;
+  knowsPlayer: boolean;
+  knownRoute: boolean;
+  bishopExposed: boolean; // the Brawler was lured away
+  podEscaped: boolean;
+  talked: boolean; // Bishop's unprompted offer has been made
+  truceUntil: number; // safe passage: no team activity before this room
+  said: string[];
+  ending: string;
 }
 
 export interface Wreck {
@@ -169,6 +253,25 @@ export interface GameState {
   pendingScrap: number; // Possum takings, paid at room clear
 
   ejected: { card: CardInst; count: number; stripped: boolean } | null;
+
+  captives: Captive[];
+  /** Pilots alive inside wedged wrecks, waiting for someone to cut them out. */
+  pinned: { pilot: string; role: UnitKind }[];
+  /** Restrained enemies to deal with now that the fight is over. */
+  custody: CustodyItem[];
+  /** A Memory Tap waiting for its three-way choice. Holds the source id. */
+  tap: string | null;
+  intel: { weak: boolean; cache: number; questionable: boolean };
+  team: Team;
+  /** R-8 mechs joining this room's fight. */
+  pendingTeam: { kind: UnitKind; pilot: string; replacement?: boolean }[];
+  /** This round's team order, shown to the player. */
+  teamOrder: string | null;
+  teamMark: boolean;
+  teamScouted: boolean;
+  interceptBishop: boolean;
+  teamEpisode: number;
+  podStart: string;
   badge: { turns: number; flagged: boolean; hostile: boolean };
 
   ownsRocket: boolean;
@@ -197,7 +300,7 @@ export interface GameState {
   extension: boolean;
   navFlag: boolean;
   lastKilled: UnitKind | null;
-  seen: { droneRemembers: boolean; patient: boolean; yard: boolean };
+  seen: { droneRemembers: boolean; patient: boolean; yard: boolean; prisoner: boolean };
   preCommission: boolean;
   revealNext: boolean;
   firstStrike: boolean; // player gets +1 Energy on turn 1 of the next fight
@@ -228,8 +331,32 @@ export type Action =
   | { type: "removeCard"; uid: string }
   | { type: "specialize"; uid: string; variant: string }
   | { type: "unequip"; what: "servo" }
+  | { type: "captive"; holder: string; what: "release" | "dismantle" }
   | { type: "nextRoom" }
   | { type: "qa"; cmd: string; n?: number; s?: string };
+
+export function newTeam(): Team {
+  const roles = ["needleback", "latchback", "widow", "kilnheart", "bishop"];
+  const ids = ["p-needle", "p-latch", "p-widow", "p-kiln", "p-bishop"];
+  return {
+    introduced: false,
+    pursuit: "dormant",
+    pilots: roles.map((role, i) => ({ id: ids[i], role, status: "active" as PilotStatus, replaced: false })),
+    episode: 1,
+    nextAt: RULES.teamFromRoom,
+    pressure: 0,
+    leverage: 0,
+    networkCut: false,
+    knowsPlayer: false,
+    knownRoute: false,
+    bishopExposed: false,
+    podEscaped: false,
+    talked: false,
+    truceUntil: 0,
+    said: [],
+    ending: "",
+  };
+}
 
 export function createGame(seed = 1): GameState {
   return {
@@ -278,6 +405,19 @@ export function createGame(seed = 1): GameState {
     possumPaid: 0,
     pendingScrap: 0,
     ejected: null,
+    captives: [],
+    pinned: [],
+    custody: [],
+    tap: null,
+    intel: { weak: false, cache: 0, questionable: false },
+    team: newTeam(),
+    pendingTeam: [],
+    teamOrder: null,
+    teamMark: false,
+    teamScouted: false,
+    interceptBishop: false,
+    teamEpisode: 0,
+    podStart: "",
     badge: { turns: 0, flagged: false, hostile: false },
     ownsRocket: false,
     rocketAmmo: 0,
@@ -300,7 +440,7 @@ export function createGame(seed = 1): GameState {
     extension: false,
     navFlag: false,
     lastKilled: null,
-    seen: { droneRemembers: false, patient: false, yard: false },
+    seen: { droneRemembers: false, patient: false, yard: false, prisoner: false },
     preCommission: false,
     revealNext: false,
     firstStrike: false,

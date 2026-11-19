@@ -25,6 +25,7 @@ import {
   freeFriendSlot,
 } from "./core";
 import type { GameState, Unit } from "./state";
+import { isStory, resolveStory, storyView } from "./story";
 
 export interface Option {
   id: string;
@@ -36,6 +37,8 @@ export interface EventView {
   title: string;
   lines: string[];
   options: Option[];
+  /** The Prisoner's expression screen: ellipses and punctuation only, with a sound caption. */
+  screen?: { glyph: string; anim: string; caption: string };
 }
 
 /** Hooks the engine provides, so this module never drives room flow itself. */
@@ -43,6 +46,7 @@ export interface Flow {
   continueHall(state: GameState): void;
   finishRoom(state: GameState): void;
   startExtension(state: GameState, kinds: UnitKind[], setup?: (state: GameState, foes: Unit[]) => void): void;
+  afterCustody(state: GameState): void;
 }
 
 type Data = Record<string, number | string | boolean | string[]>;
@@ -205,6 +209,7 @@ function openSub(state: GameState) {
 export function eventView(state: GameState): EventView | null {
   const ev = state.event;
   if (!ev) return null;
+  if (isStory(ev.id)) return storyView(state);
   const d = ev.data;
   const en = (n: number) => canPayEnergy(state, n, true);
   const builder = allies(state, "builder")[0];
@@ -374,6 +379,7 @@ function patientWakes(state: GameState, repairable: boolean) {
 export function resolveEvent(state: GameState, option: string, flow: Flow) {
   const ev = state.event;
   if (!ev) return;
+  if (isStory(ev.id)) return resolveStory(state, option, flow);
   const view = eventView(state);
   const chosen = view?.options.find((x) => x.id === option);
   if (!chosen || !chosen.enabled) return;

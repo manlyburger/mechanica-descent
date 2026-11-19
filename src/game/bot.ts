@@ -23,9 +23,9 @@ export const PASSIVE: BotStyle = { loadout: "lootbox", risky: false, salvageUnde
 
 const REWARD_ORDER: CardId[] = [
   "SLUG", "HOOK", "BUILDER", "BURST", "JACK", "LEECH", "SHEPHERD", "WALKER", "FLUSH", "FOAM", "PLATE", "POSSUM", "GUNNEST",
-  "WARFRAME", "WELDER", "CELL", "COFFIN", "BULKHEAD", "FLARE", "SERVO", "REFLEX", "STRIP", "QUIET", "BEACON",
+  "WARFRAME", "WELDER", "CELL", "COFFIN", "WEDGE", "CLAMPJAW", "LOCKBANDS", "BULKHEAD", "FLARE", "SERVO", "REFLEX", "STRIP", "QUIET", "POD", "MEMTAP", "BEACON",
 ];
-const MACHINE_CARDS: CardId[] = ["BUILDER", "JACK", "SHEPHERD", "WALKER", "POSSUM", "GUNNEST", "WARFRAME", "BULKHEAD", "LEECH", "SERVO", "HAND", "BEACON"];
+const MACHINE_CARDS: CardId[] = ["CLAMPJAW", "POD", "LOCKBANDS", "WEDGE", "MEMTAP", "BUILDER", "JACK", "SHEPHERD", "WALKER", "POSSUM", "GUNNEST", "WARFRAME", "BULKHEAD", "LEECH", "SERVO", "HAND", "BEACON"];
 
 // Safest-first and boldest-first option orders per event.
 const SAFE: Record<string, string[]> = {
@@ -40,6 +40,13 @@ const SAFE: Record<string, string[]> = {
   "hw-salvage": ["drone", "none"],
   "hw-circle": ["drone", "inspect", "mark", "fight"],
   "hw-eats": ["seal", "retreat"],
+  custody: ["keep-pod", "keep-clamp", "dismantle", "release"],
+  "r8-recovery": ["observe"],
+  "r8-brawler": ["lure", "evade"],
+  "r8-relay": ["talk", "intercept", "network", "assault"],
+  "r8-pod": ["ground", "walker", "track"],
+  "r8-talk": ["call", "exchange", "codes"],
+  prisoner: ["leave"],
 };
 const BOLD: Record<string, string[]> = {
   scared: ["accept", "leave"],
@@ -53,6 +60,13 @@ const BOLD: Record<string, string[]> = {
   "hw-salvage": ["leech", "drone", "all"],
   "hw-circle": ["leech", "mark", "fight"],
   "hw-eats": ["harvest", "extract", "seal"],
+  custody: ["keep-pod", "keep-clamp", "tap-hazard", "dismantle", "release"],
+  "r8-recovery": ["attack"],
+  "r8-brawler": ["face"],
+  "r8-relay": ["talk", "intercept", "assault"],
+  "r8-pod": ["ground", "walker", "pursue"],
+  "r8-talk": ["call", "exchange", "come"],
+  prisoner: ["band", "tap", "strip", "leave"],
 };
 
 function incoming(s: GameState): number {
@@ -91,6 +105,9 @@ function combatMove(s: GameState, style: BotStyle): Action {
       else if (a.cmd === "retrieve") consider(a, 30);
       else if (a.cmd === "emergency" && a.targetId === j.uid && j.hp <= 2) consider(a, 45);
       else if (a.cmd === "risky" && u && u.hp <= 1) consider(a, 20);
+      else if (a.uid === "tap") consider(a, a.cmd === "hazard" ? 99 : 98);
+      else if (a.cmd === "apprehend") consider(a, s.units.find((x) => x.uid === a.targetId)?.kind === "capsule" ? 88 : 60);
+      else if (a.cmd === "contain" || a.cmd === "transfer") consider(a, 86);
       continue;
     }
     if (a.type !== "play") continue;
@@ -121,6 +138,10 @@ function combatMove(s: GameState, style: BotStyle): Action {
       case "STRIP": if (s.threat + 1 < RULES.threatPerDrone) consider(a, 10); break;
       case "QUIET": if (s.threat >= 2) consider(a, 12); break;
       case "FLARE": if (threat >= 1) consider(a, 11); break;
+      case "LOCKBANDS": if (t && (t.kind === "capsule" || t.cap?.state === "securing")) consider(a, 87); else if (t && !t.cap) consider(a, 30); break;
+      case "WEDGE": if (t && t.pilot && (t.plan?.type === "eject" || t.hp <= 4)) consider(a, 84); break;
+      case "MEMTAP": consider(a, 55); break;
+      case "CLAMPJAW": case "POD":
       case "BUILDER": case "JACK": case "SHEPHERD": case "WALKER": case "POSSUM": case "GUNNEST": case "WARFRAME":
         consider(a, s.turn <= 2 ? 80 : 25);
         break;

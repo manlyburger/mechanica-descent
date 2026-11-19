@@ -14,6 +14,8 @@ export interface Setup {
   /** Stun every enemy for the whole test so only what is under test happens. */
   quiet?: boolean;
   pick?: "lootbox" | "mine" | "buddy";
+  /** R-8 mechs to field, with their real pilots: "needleback,bishop". */
+  team?: string;
 }
 
 /** A clean fight with exactly the pieces a test needs. */
@@ -21,7 +23,8 @@ export function fight(o: Setup = {}): GameState {
   let s = run(createGame(o.seed ?? 5), { type: "start", seed: o.seed ?? 5 }, { type: "loadout", pick: o.pick ?? "lootbox" });
   s = qa(s, "scrap", o.scrap ?? 20);
   if (o.allies) s = qa(s, "ally", undefined, o.allies);
-  s = qa(s, "fight", o.pick === "mine" ? 1 : 0, o.enemies ?? "zombie");
+  if (o.team) s = qa(s, "team", undefined, o.team);
+  s = qa(s, "fight", o.pick === "mine" ? 1 : 0, o.enemies ?? (o.team ? "" : "zombie"));
   if (o.hand) s = qa(s, "hand", undefined, o.hand);
   s = qa(s, "energy", o.energy ?? 9);
   if (o.quiet !== false) for (const e of living(s, "enemy")) e.stunned = 99;
@@ -52,3 +55,8 @@ export function findSeed<T>(make: (seed: number) => T, ok: (t: T) => boolean, ma
 }
 
 export { RULES };
+
+export const choose = (s: GameState, option: string) => reduce(s, { type: "event", option });
+export const pilotStatus = (s: GameState, id: string) => s.team.pilots.find((p) => p.id === id)!.status;
+/** Ends turns with every enemy plan left alone, re-quieting nothing. */
+export const said = (s: GameState, text: string) => s.log.some((l) => l.includes(text));

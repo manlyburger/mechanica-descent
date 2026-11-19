@@ -38,7 +38,17 @@ export type UnitKind =
   | "shepherd"
   | "walker"
   | "jack"
-  | "warframe";
+  | "warframe"
+  | "clampjaw"
+  | "pod"
+  | "needleback"
+  | "latchback"
+  | "widow"
+  | "kilnheart"
+  | "bishop"
+  | "capsule"
+  | "relay"
+  | "prisoner";
 
 export interface DepthRow {
   alwaysLight: number;
@@ -214,6 +224,61 @@ export const RULES = {
   patientRooms: 2,
   yardChance: 0.08,
 
+  // ---- Capture and containment (brief 3) ----
+  captureHp: 3, // a machine at this HP or less, or disabled, can be apprehended
+  grappleIntegrity: 50,
+  lockIntegrity: 60,
+  bandIntegrity: 30,
+  bandBase: 20, // integrity of a disabled target secured by a band alone
+  maxBands: 2,
+  holdReinforce: 15, // a holding Clampjaw adds this each action
+  strain: 15, // ordinary struggle per enemy turn
+  strainStrong: 25, // medium machines above captureHp, the prisoner
+  strainCritical: 40, // at or below this the captor takes 1 when struggled against
+  podUpkeepTurns: 3,
+  podLowPowerLoss: 20,
+  podContainedStrain: 5,
+  wedgeTurns: 2,
+  wedgeRemoveEnergy: 1,
+  trappedSurvival: 0.5, // pilot wedged in a chassis that is destroyed
+  blastSurvival: 0.1, // pilot inside a reactor explosion
+  bailSurvival: 0.5, // pilot of a chassis destroyed before it could eject
+  dismantle: { small: 2, medium: 3 },
+  chassisScrap: 4, // an intact R-8 chassis recovered
+  tap: { clean: 0.6, partial: 0.3 },
+  tapCache: { clean: 3, partial: 1 },
+
+  // ---- The Prisoner That Repairs Itself ----
+  prisonerChance: 0.08,
+  prisonerFromRoom: 3,
+  prisonerIntegrity: 70,
+  prisonerScrap: 4,
+  prisonerPart: 0.35,
+  prisonerFights: 3,
+  prisonerRegen: 1,
+
+  // ---- Melee closing (brief 4) ----
+  proxEngaged: 2,
+  kilnCoverDamage: 2,
+
+  // ---- Relay Section R-8 ----
+  teamFromRoom: 2,
+  teamBonusMax: 2, // team-related bonus enemies in one room
+  returnWindow: 3, // an escaped pilot returns within 1..3 rooms
+  returnWithoutRecovery: 0.5,
+  replacementHpLoss: 2,
+  capsuleHp: 2,
+  bishopPodHp: 3,
+  kilnFuse: 2, // turns from Critical to detonation
+  kilnBlast: 3,
+  kilnHeatAt: [7, 4], // HP at which the reactor goes Heated, then Critical
+  kilnStubborn: 0.5,
+  widowScavenge: 0.4,
+  negotiateAt: 2, // leverage needed to open talks
+  withdrawAt: 3, // leverage needed for "call them off" to succeed
+  safePassageRooms: 3,
+  relayGuards: 2,
+
   // ---- Enemy counterplay ----
   droneScavenge: 0.35,
   droneJam: 0.25,
@@ -234,7 +299,8 @@ export type Tag =
   | "piloted"
   | "melee"
   | "machine" // allied machine: reactions, Coffin, Override
-  | "structure";
+  | "structure"
+  | "team"; // Relay Section R-8: ejectable cockpit, persistent pilot
 
 export interface UnitDef {
   name: string;
@@ -243,19 +309,29 @@ export interface UnitDef {
   missiles: number;
   /** Each point deducts 1 from every instance of damage taken. */
   armor?: number;
+  /** Capture class. Clampjaw and Lockbands handle small and medium machines only. */
+  size?: "small" | "medium" | "heavy";
+  /** Melee units start this many steps toward the player (0 Distant, 1 Closing, 2 Engaged). */
+  startProx?: number;
+  /** R-8 mechs: the pilot prepares to eject at this HP or less. */
+  ejectAt?: number;
+  /** Turns the escape capsule stays on the field before it is gone. */
+  capsuleTurns?: number;
+  /** How the cockpit leaves, shown when it does. */
+  ejection?: string;
   tags: Tag[];
 }
 
 export const UNITS: Record<UnitKind, UnitDef> = {
   jubey: { name: "Jubey", hp: RULES.startHp, atk: 0, missiles: 0, tags: ["mechanical"] },
-  light: { name: "Light Mech", hp: 4, atk: 1, missiles: 2, tags: ["mechanical", "aggressive", "piloted", "anomaly_eligible"] },
-  lvl2: { name: "Level 2 Mech", hp: 8, atk: 2, missiles: 2, tags: ["mechanical", "heavy_machine", "defensive", "leech_purge", "piloted", "anomaly_eligible"] },
-  infested: { name: "Infested Mech", hp: 5, atk: 2, missiles: 0, tags: ["mechanical", "aggressive", "melee"] },
-  drone: { name: "Drone", hp: 2, atk: 1, missiles: 0, tags: ["mechanical", "repair_capable", "salvage_sensitive", "neutral_maintenance"] },
-  zombie: { name: "Zombie Mech", hp: 10, atk: 2, missiles: 0, tags: ["mechanical", "heavy_machine", "aggressive", "melee"] },
+  light: { name: "Light Mech", hp: 4, atk: 1, missiles: 2, size: "medium", tags: ["mechanical", "aggressive", "piloted", "anomaly_eligible"] },
+  lvl2: { name: "Level 2 Mech", hp: 8, atk: 2, missiles: 2, size: "heavy", tags: ["mechanical", "heavy_machine", "defensive", "leech_purge", "piloted", "anomaly_eligible"] },
+  infested: { name: "Infested Mech", hp: 5, atk: 2, missiles: 0, size: "medium", startProx: 1, tags: ["mechanical", "aggressive", "melee"] },
+  drone: { name: "Drone", hp: 2, atk: 1, missiles: 0, size: "small", tags: ["mechanical", "repair_capable", "salvage_sensitive", "neutral_maintenance"] },
+  zombie: { name: "Zombie Mech", hp: 10, atk: 2, missiles: 0, size: "heavy", tags: ["mechanical", "heavy_machine", "aggressive", "melee"] },
   rifleman: { name: "Rifleman", hp: 1, atk: 1, missiles: 0, tags: [] },
-  powered: { name: "Powered Armor", hp: 3, atk: 1, missiles: 0, armor: 1, tags: ["mechanical", "piloted", "anomaly_eligible"] },
-  patient: { name: "Patient Machine", hp: 6, atk: 2, missiles: 0, tags: ["mechanical", "machine", "heavy_machine"] },
+  powered: { name: "Powered Armor", hp: 3, atk: 1, missiles: 0, armor: 1, size: "small", tags: ["mechanical", "piloted", "anomaly_eligible"] },
+  patient: { name: "Patient Machine", hp: 6, atk: 2, missiles: 0, size: "heavy", tags: ["mechanical", "machine", "heavy_machine"] },
   scared: { name: "Scared Mech", hp: 4, atk: 1, missiles: 0, tags: ["mechanical", "machine"] },
   robobuddy: { name: "Lil Robobuddy", hp: RULES.buddyHp, atk: 0, missiles: 0, tags: ["mechanical", "machine"] },
   builder: { name: "Builder Drone", hp: 4, atk: 1, missiles: 0, tags: ["mechanical", "machine"] },
@@ -267,6 +343,16 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   walker: { name: "Ceiling Walker", hp: 3, atk: 2, missiles: 0, tags: ["mechanical", "machine"] },
   jack: { name: "Panic Jack", hp: 5, atk: 1, missiles: 0, tags: ["mechanical", "machine"] },
   warframe: { name: "Unfinished Warframe", hp: 8, atk: 3, missiles: 0, tags: ["mechanical", "machine"] },
+  clampjaw: { name: "Clampjaw Drone", hp: 4, atk: 0, missiles: 0, tags: ["mechanical", "machine"] },
+  pod: { name: "Containment Pod", hp: 7, atk: 0, missiles: 0, tags: ["mechanical", "structure"] },
+  needleback: { name: "Needleback Courier", hp: 5, atk: 2, missiles: 0, size: "medium", ejectAt: 2, capsuleTurns: 1, ejection: "The rear cockpit detaches and rocket rails throw it backward down the hall.", tags: ["mechanical", "piloted", "team", "anomaly_eligible"] },
+  latchback: { name: "Latchback Brawler", hp: 9, atk: 3, missiles: 0, armor: 1, size: "medium", ejectAt: 3, capsuleTurns: 2, ejection: "The cockpit rotates up over the shoulder plating and the launcher fires it at the ceiling. It comes down two columns over.", tags: ["mechanical", "piloted", "team", "melee", "aggressive"] },
+  widow: { name: "Gantry Widow", hp: 8, atk: 2, missiles: 0, size: "medium", ejectAt: 3, capsuleTurns: 2, ejection: "The crane legs spread and the cockpit drops out from under the frame onto its skids.", tags: ["mechanical", "piloted", "team", "repair_capable"] },
+  kilnheart: { name: "Kilnheart Breaker", hp: 11, atk: 4, missiles: 0, size: "heavy", capsuleTurns: 1, ejection: "The escape rocket lights and the cockpit tears free of the burning frame.", tags: ["mechanical", "piloted", "team", "melee", "heavy_machine"] },
+  bishop: { name: "Relay Bishop", hp: 7, atk: 2, missiles: 0, size: "medium", ejectAt: 3, capsuleTurns: 2, ejection: "The command pod lifts off the chassis under its own power, antennae still turning.", tags: ["mechanical", "piloted", "team"] },
+  capsule: { name: "Escape Capsule", hp: RULES.capsuleHp, atk: 0, missiles: 0, size: "small", tags: ["mechanical"] },
+  relay: { name: "Command Relay", hp: 6, atk: 0, missiles: 0, armor: 1, size: "heavy", tags: ["mechanical"] },
+  prisoner: { name: "The Prisoner", hp: 7, atk: 3, missiles: 0, size: "medium", tags: ["mechanical", "machine"] },
 };
 
 export function label(kind: UnitKind): string {
@@ -288,7 +374,9 @@ export type CardId =
   | "BUILDER" | "LEECH" | "HALLWAY" | "BULKHEAD" | "BEACON" | "SERVO" | "CELL"
   | "POSSUM" | "GUNNEST" | "REDMOUTH" | "FOAM" | "REFLEX"
   // brief 2
-  | "SHEPHERD" | "WALKER" | "JACK" | "WARFRAME" | "BADGE" | "COFFIN" | "RECORDER" | "HAND";
+  | "SHEPHERD" | "WALKER" | "JACK" | "WARFRAME" | "BADGE" | "COFFIN" | "RECORDER" | "HAND"
+  // brief 3
+  | "CLAMPJAW" | "LOCKBANDS" | "WEDGE" | "POD" | "MEMTAP";
 
 export type Category =
   | "Attack" | "Defense" | "Utility" | "Machine Ally" | "Attachment" | "Equipment"
@@ -300,7 +388,10 @@ export type TargetMode =
   | "enemyMech" // Salvage Leech
   | "friend" // any friendly unit (Bulkhead cover)
   | "foam" // friendly machine or structure, or any enemy
-  | "machine"; // friendly machine or mechanical enemy (Sealant Coffin)
+  | "machine" // friendly machine or mechanical enemy (Sealant Coffin)
+  | "band" // a disabled, grappled or secured enemy machine (Industrial Lockbands)
+  | "cockpit" // a piloted enemy mech (Cockpit Wedge)
+  | "tap"; // a secured enemy machine, or your own Clampjaw or Pod holding one (Memory Tap)
 
 export type Rarity = "starter" | "common" | "uncommon" | "rare" | "special";
 
@@ -372,6 +463,12 @@ export const CARDS: Record<CardId, CardDef> = {
   COFFIN: c({ id: "COFFIN", name: "Sealant Coffin", cost: 1, target: "machine", cats: ["Utility"], rarity: "common", tech: true, text: `Seal a machine: it skips ${R.coffinActions} actions, then heals ${R.coffinHeal}. Works on enemies. They heal too.` }),
   RECORDER: c({ id: "RECORDER", name: "Black-Box Recorder", cost: 0, target: "none", cats: ["Reaction", "Nightmare"], rarity: "uncommon", text: `Arm it. When an allied machine is destroyed: pay ${R.recorderScrap} Scrap, draw ${R.recorderDraw}, +1 Madness. Once a fight.` }),
   HAND: c({ id: "HAND", name: "Manual Override Hand", cost: 0, scrap: 2, target: "none", cats: ["Equipment", "Nightmare"], rarity: "rare", text: "Equip: once a fight, cancel an allied machine's malfunction and take control. It takes 1 damage." }),
+
+  CLAMPJAW: c({ id: "CLAMPJAW", name: "Clampjaw Drone", cost: 0, scrap: 2, target: "none", cats: ["Machine Ally"], rarity: "common", deploys: "clampjaw", text: `4 HP / 0. Order it to apprehend a machine at ${R.captureHp} HP or less, or a disabled one: grapple, then lock. Holds ONE captive.` }),
+  LOCKBANDS: c({ id: "LOCKBANDS", name: "Industrial Lockbands", cost: 0, scrap: 1, target: "band", cats: ["Utility", "Equipment"], rarity: "common", text: `Band a disabled, grappled or secured machine: +${R.bandIntegrity} restraint. Finishes a grapple. Max ${R.maxBands} per captive.` }),
+  WEDGE: c({ id: "WEDGE", name: "Cockpit Wedge", cost: 0, scrap: 1, target: "cockpit", cats: ["Attachment"], rarity: "uncommon", text: `Jam a piloted mech's cockpit for ${R.wedgeTurns} turns: no ejection. Radio, weapons and reactors are untouched. A trapped pilot can die in there.` }),
+  POD: c({ id: "POD", name: "Mobile Containment Pod", cost: 0, scrap: 3, target: "none", cats: ["Structure"], rarity: "rare", deploys: "pod", text: `7 HP. Holds ONE secured pilot, capsule, Drone or small machine. 1 Energy every ${R.podUpkeepTurns} occupied turns. Travels with you.` }),
+  MEMTAP: c({ id: "MEMTAP", name: "Memory Tap", cost: 1, target: "tap", cats: ["Utility"], rarity: "uncommon", tech: true, text: "Read a secured or contained machine's records: a hazard scan, a weakness, or a cache trace. Once per captive. Records can be corrupt." }),
 };
 
 export const STARTING_DECK: CardId[] = [

@@ -306,6 +306,8 @@ describe("Armor and Powered Armor", () => {
 describe("other brief-1 cards", () => {
   it("Emergency Bulkhead takes hits for its ward, and Collapse prevents 2 for everyone", () => {
     let s = fight({ enemies: "infested", hand: "BULKHEAD", quiet: false });
+    foe(s).prox = 2;
+    foe(s).plan = { type: "attack", targetUid: j(s).uid, dmg: 2 };
     s = play(s, "BULKHEAD", j(s));
     s = findSeed((seed) => { const t = structuredClone(s); t.rng = seed; return end(t); }, (t) => ally(t, "bulkhead")?.hp === 4);
     expect(j(s).hp).toBe(j(s).maxHp);

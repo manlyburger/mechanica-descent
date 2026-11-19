@@ -27,6 +27,22 @@ function checkInvariants(s: GameState) {
   for (const id of bound) expect(piles.includes(id!), "deployed card also in a pile").toBe(false);
   for (const u of s.units) if (u.leech?.cardUid) expect(piles.includes(u.leech.cardUid)).toBe(false);
   if (s.phase === "event") expect(legalActions(s).length, "event with no way out").toBeGreaterThan(0);
+  // Capture: one captive per holder, each captive held once, no pilot in two places.
+  const holders = s.captives.map((c) => c.holder);
+  expect(new Set(holders).size, "holder with two captives").toBe(holders.length);
+  expect(new Set(s.captives.map((c) => c.id)).size, "captive duplicated").toBe(s.captives.length);
+  for (const c of s.captives) expect(s.units.some((u) => u.uid === c.holder && u.holding === c.id), "captive without its holder").toBe(true);
+  for (const p of s.team.pilots) {
+    const inUnits = s.units.filter((u) => u.pilot === p.id && u.hp > 0).length;
+    const inCustody = s.captives.filter((c) => c.pilot === p.id).length + s.custody.filter((c) => c.pilot === p.id).length;
+    expect(inUnits + inCustody, `pilot ${p.id} in two places`).toBeLessThanOrEqual(1);
+    if (p.status === "captured" || p.status === "dead" || p.status === "withdrawn") {
+      expect(inUnits, `${p.status} pilot ${p.id} on the field`).toBe(0);
+      expect(p.returnsIn, `${p.status} pilot ${p.id} scheduled to return`).toBeUndefined();
+    }
+  }
+  if (!["active", "disrupted", "dormant"].includes(s.team.pursuit)) expect(s.pendingTeam.length, "team spawn after the pursuit ended").toBe(0);
+  for (const u of s.units) if (u.prox !== undefined) expect(u.prox >= 0 && u.prox <= RULES.proxEngaged).toBe(true);
 }
 
 /** A run that starts rich and tough with every card, so the fuzzer reaches everything. */
@@ -75,6 +91,8 @@ describe("engine", () => {
   it("random play from a fully loaded start: 250 runs, every state checked, nothing stalls or throws", () => {
     const seen = new Set<string>();
     const played = new Set<string>();
+    const endings = new Set<string>();
+    const statuses = new Set<string>();
     for (let seed = 1; seed <= 250; seed++) {
       let s = loaded(seed);
       let x = seed * 2654435761 >>> 0 || 1;
@@ -88,11 +106,15 @@ describe("engine", () => {
         if (a.type === "play") played.add(s.hand.find((c) => c.uid === (a as { uid: string }).uid)!.id);
         s = reduce(s, a);
         if (s.event) seen.add(s.event.id);
+        if (!["active", "disrupted", "dormant"].includes(s.team.pursuit)) endings.add(s.team.pursuit);
+        for (const p of s.team.pilots) statuses.add(p.status);
         checkInvariants(s);
       }
     }
-    for (const id of ["hallway", "hw-maint", "hw-behind", "hw-salvage", "hw-circle", "hw-eats", "patient", "yard", "remembers", "scared", "choice"]) expect(seen.has(id), `event ${id} never opened`).toBe(true);
+    for (const id of ["hallway", "hw-maint", "hw-behind", "hw-salvage", "hw-circle", "hw-eats", "patient", "yard", "remembers", "scared", "choice", "custody", "r8-recovery", "r8-brawler", "r8-relay", "r8-talk", "prisoner"]) expect(seen.has(id), `event ${id} never opened`).toBe(true);
     for (const id of REWARD_POOL) expect(played.has(id), `card ${id} never played`).toBe(true);
+    expect(endings.size, "no run ever ended the pursuit").toBeGreaterThanOrEqual(1);
+    expect(statuses.has("dead") && (statuses.has("escaped") || statuses.has("withdrawn")), `pilot outcomes seen: ${[...statuses].join(", ")}`).toBe(true);
   }, 240_000);
 
   it("a save made mid-event or mid-fight reloads to the same future", () => {

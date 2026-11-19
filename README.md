@@ -8,7 +8,7 @@ Play: https://manlyburger.github.io/mechanica-descent/
 npm install
 npm run dev        # play locally
 npm test           # engine tests
-npm run sim        # balance sim (2,000 bot runs per row)
+npm run sim        # balance sim (default 2,000 bot runs per row)
 npm run build      # typecheck + production build
 ```
 

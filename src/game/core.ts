@@ -19,6 +19,8 @@ import {
 import type { CardInst, GameState, Plan, Unit, Wreck } from "./state";
 import { clampLost, clampjawAct, loseCaptive } from "./capture";
 import { actSpecial, engaged, fighters, onDamaged, onEnemyKilled, planSpecial, teamOrders } from "./pursuit";
+import { PILOTED, avoidDeath, commandBonus, creditKill, footAct, frameAct, frameLost, pilotDefense, rec as pilotRec, rollParts, setAwayCaptive } from "./pilots";
+import { setPilot } from "./team";
 
 // ---------- RNG, log ----------
 
@@ -256,6 +258,7 @@ export function takeWreck(state: GameState, id: string): Wreck | undefined {
 export function stripWreck(state: GameState, id: string, scrap: number) {
   const w = takeWreck(state, id);
   if (!w) return;
+  if (w.side === "enemy" && PILOTED.includes(w.kind)) rollParts(state, w.src ?? w.id, `Stripping the ${label(w.kind)}'s cockpit`);
   state.scrap += scrap * w.value;
   state.threat += RULES.salvageThreat;
   state.salvagedThisTurn = true;
@@ -269,6 +272,8 @@ export function stripWreck(state: GameState, id: string, scrap: number) {
 export interface DealOpts {
   noLeech?: boolean;
   attackerUid?: string;
+  /** Explicitly unsurvivable: no Endurance survival roll. */
+  unsurvivable?: boolean;
 }
 
 export function deal(state: GameState, target: Unit | undefined, amount: number, src: string, opts: DealOpts = {}): number {
@@ -299,6 +304,10 @@ export function deal(state: GameState, target: Unit | undefined, amount: number,
       return 0;
     }
   }
+  if (target.kind === "pilot" && target.side === "friendly") {
+    dmg = pilotDefense(state, target, dmg);
+    if (dmg <= 0) return 0;
+  }
   target.hp -= dmg;
   target.dmgTurn += dmg;
   if (target.side === "enemy" && (target.pacified ?? 0) > 0) {
@@ -315,6 +324,10 @@ export function deal(state: GameState, target: Unit | undefined, amount: number,
   onDamaged(state, target);
   const l = target.leech;
   if (l && target.side === "enemy" && !opts.noLeech && !l.firedTurn && target.dmgTurn >= RULES.leechThreshold) extract(state, target);
+  if (target.hp <= 0 && target.kind === "pilot" && target.side === "friendly" && !opts.unsurvivable) {
+    const r = pilotRec(state, target.pilot);
+    if (r && avoidDeath(state, r)) target.hp = 1;
+  }
   if (target.hp <= 0) kill(state, target, opts.attackerUid);
   return dmg;
 }
@@ -377,6 +390,7 @@ export function kill(state: GameState, u: Unit, killerUid?: string) {
     return;
   }
   state.units = state.units.filter((x) => x.uid !== u.uid);
+  if (u.side === "enemy") creditKill(state, killerUid);
   for (const n of state.units) {
     if (n.clamp === u.uid) n.clamp = undefined;
     if (n.guards === u.uid) n.guards = undefined;
@@ -436,6 +450,18 @@ function killEnemy(state: GameState, u: Unit) {
 }
 
 function killFriendly(state: GameState, u: Unit, killerUid?: string) {
+  if (u.kind === "pilot") {
+    const r = pilotRec(state, u.pilot);
+    log(state, `${r?.name ?? "The pilot"} does not get up.`);
+    setPilot(state, u.pilot, "dead");
+    return;
+  }
+  if (u.kind === "frame") {
+    const id = u.pilot;
+    const fate = frameLost(state, u);
+    if (fate === "dead") setPilot(state, id, "dead");
+    if (fate === "away") setAwayCaptive(state, id);
+  }
   if (u.kind === "beacon") log(state, "THREAT BEACON DESTROYED. The signal cuts out with a shriek.");
   if (u.kind === "clampjaw") clampLost(state, u.uid);
   if (u.kind === "clampjaw" || u.kind === "pod") loseCaptive(state, u.uid, `the ${label(u.kind)} is destroyed`);
@@ -770,7 +796,7 @@ export function enemyAct(state: GameState, u: Unit) {
 
 function machineAttack(state: GameState, a: Unit, tgt: Unit | undefined, dmg: number) {
   if (!tgt || dmg <= 0) return;
-  const p = a.kind === "scared" ? RULES.allyHit : RULES.machineHit;
+  const p = (a.kind === "scared" ? RULES.allyHit : RULES.machineHit) + commandBonus(state);
   if (chance(state, p)) deal(state, tgt, dmg, label(a.kind), { attackerUid: a.uid });
   else log(state, `${label(a.kind)} fires wide.`);
 }
@@ -976,6 +1002,15 @@ export function allyAct(state: GameState, a: Unit) {
       break;
     case "prisoner":
       machineAttack(state, a, nearestEnemy(state, a), a.atk);
+      break;
+    case "frame":
+      frameAct(state, a, (t, dmg, p) => {
+        if (chance(state, p)) deal(state, t, dmg, `${pilotRec(state, a.pilot)?.name ?? "Frame"}'s frame`, { attackerUid: a.uid });
+        else log(state, `${pilotRec(state, a.pilot)?.name ?? "The frame"} fires wide.`);
+      }, fighters(state));
+      break;
+    case "pilot":
+      footAct(state, a, fighters(state));
       break;
     case "shepherd":
       shepherdAct(state, a);

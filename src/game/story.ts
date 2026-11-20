@@ -4,6 +4,7 @@
 
 import { CARDS, REWARD_POOL, RULES } from "./data";
 import { addCard, addScrap, allies, canPayEnergy, chance, deal, freeFriendSlot, hasAlly, inDeck, jubey, log, payEnergy, pick, roll, spawn } from "./core";
+import { PILOTED, rollParts } from "./pilots";
 import { dismantleValue, freeClampjaw, integrityBand, loseCaptive, podFits, resolveTap, takeCaptive, vacantPod, type TapChoice } from "./capture";
 import type { EventView, Flow, Option } from "./events";
 import type { GameState } from "./state";
@@ -284,7 +285,10 @@ export function resolveStory(state: GameState, option: string, flow: Flow) {
       } else if (option === "keep-pod") {
         const pod = vacantPod(state);
         if (pod) takeCaptive(state, item, pod);
-      } else if (option === "dismantle") addScrap(state, dismantleValue(item), `Dismantled ${item.label.replace(/^The /, "the ")}`);
+      } else if (option === "dismantle") {
+        addScrap(state, dismantleValue(item), `Dismantled ${item.label.replace(/^The /, "the ")}`);
+        if (PILOTED.includes(item.kind)) rollParts(state, item.id, "Its cockpit");
+      }
       else if (item.pilot) setPilot(state, item.pilot, "escaped", "you let them go");
       else log(state, `You leave ${item.label.replace(/^The /, "the ")} where it lies.`);
       state.custody.shift();

@@ -24,6 +24,8 @@ import {
   tapCommands,
   teamSummary,
   whyNotRestrainable,
+  P,
+  ITEMS,
   type Action,
   type CardInst,
   type Command,
@@ -31,8 +33,9 @@ import {
   type Unit,
 } from "./game/engine";
 import "./App.css";
+import { Crew } from "./Crew";
 
-const KEY = "mechanica-descent-v5";
+const KEY = "mechanica-descent-v6";
 type Dispatch = (a: Action) => void;
 const newSeed = () => (Date.now() % 99991) + 1;
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -42,7 +45,7 @@ const SHORT: Record<UnitKind, string> = {
   rifleman: "Rifle", powered: "P. Armor", patient: "Patient", robobuddy: "Buddy", builder: "Builder", possum: "Possum", gunnest: "Nest",
   bulkhead: "Bulkhead", beacon: "Beacon", shepherd: "Shepherd", walker: "Walker", jack: "Panic Jack", warframe: "Warframe",
   clampjaw: "Clampjaw", pod: "Pod", needleback: "Courier", latchback: "Brawler", widow: "Widow", kilnheart: "Breaker",
-  bishop: "Bishop", capsule: "Capsule", relay: "Relay", prisoner: "Prisoner",
+  bishop: "Bishop", capsule: "Capsule", relay: "Relay", prisoner: "Prisoner", frame: "Frame", pilot: "Pilot",
 };
 
 function load(): GameState {
@@ -50,7 +53,7 @@ function load(): GameState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw) as GameState;
-      if (s && s.v === SAVE_VERSION && Array.isArray(s.deck) && Array.isArray(s.wrecks) && s.team) return s;
+      if (s && s.v === SAVE_VERSION && Array.isArray(s.deck) && Array.isArray(s.wrecks) && s.team && Array.isArray(s.roster)) return s;
     }
   } catch {
     /* storage unavailable or save unreadable: start clean */
@@ -61,6 +64,7 @@ function load(): GameState {
 function App() {
   const [state, dispatch] = useReducer(reduce, undefined, load);
   const [help, setHelp] = useState(false);
+  const [crew, setCrew] = useState(false);
 
   useEffect(() => {
     try {
@@ -84,9 +88,16 @@ function App() {
           <div>
             <span className="brand">MECHANICA</span> <span className="sub">DESCENT</span>
           </div>
-          <button className="help" onClick={() => setHelp(!help)} aria-expanded={help}>
-            {help ? "close" : "rules"}
-          </button>
+          <span className="topbtns">
+            {inRun && (P.crewCount(state) > 0 || state.items.length > 0 || state.parts > 0) && (
+              <button className="help crewbtn" onClick={() => setCrew(true)}>
+                crew {P.crewCount(state)}
+              </button>
+            )}
+            <button className="help" onClick={() => setHelp(!help)} aria-expanded={help}>
+              {help ? "close" : "rules"}
+            </button>
+          </span>
         </div>
         {inRun && (
           <div className="res">
@@ -117,6 +128,7 @@ function App() {
       {(state.phase === "win" || state.phase === "dead") && <End state={state} dispatch={dispatch} />}
 
       {inRun && <Log lines={state.log} />}
+      {crew && <Crew state={state} dispatch={dispatch} onClose={() => setCrew(false)} />}
     </div>
   );
 }
@@ -147,11 +159,13 @@ function Gear({ state }: { state: GameState }) {
   if (state.intel.cache > 0) g.push(`Records: cache at next Tech Stop`);
   if (state.intel.questionable) g.push("RECORDS UNVERIFIED");
   if (state.team.knownRoute && state.team.introduced) g.push("R-8 route known");
+  if (state.parts) g.push(`Cockpit Parts ${state.parts}/3`);
+  for (const r of state.roster) if (r.custody === "captive" && r.strain >= 70) g.push(`${r.name} RESTLESS`);
   if (!g.length) return null;
   return (
     <div className="gear">
       {g.map((x) => (
-        <span key={x} className={/UNSTABLE|LAST|UNVERIFIED/.test(x) ? "warn" : ""}>
+        <span key={x} className={/UNSTABLE|LAST|UNVERIFIED|RESTLESS/.test(x) ? "warn" : ""}>
           {x}
         </span>
       ))}
@@ -180,6 +194,10 @@ function Help() {
       <p>
         <b>Pilots.</b> Some mechs eject. A capsule that leaves the room means a pilot who may come back in a new frame. A
         Cockpit Wedge blocks the ejection, not the radio and not the reactor.
+      </p>
+      <p>
+        <b>Pilots.</b> Captured and recruited pilots are people with stats, gear and loyalty. Open <b>crew</b> to equip them,
+        talk to them, and assign them on foot or to a salvaged frame. Unwilling captives cannot be assigned at all.
       </p>
       <p>
         <b>Machines.</b> Tap any unit to inspect it and give orders. Allied machines act on their own after your turn, and stay
@@ -363,6 +381,16 @@ function statusLines(state: GameState, u: Unit): string[] {
     if (u.kind === "walker") s.push(u.elevated ? "overhead" : "on the floor");
     if (u.kind === "jack") s.push(u.protect ? `guards ${SHORT[state.units.find((x) => x.uid === u.protect)?.kind ?? "jubey"]}${u.intercepted ? " (spent)" : ""}` : "no ward");
     if (u.kind === "gunnest") s.push(u.clamp ? "clamped +2" : "crawling");
+    if (u.bolting) s.push("PULLING AWAY");
+    if (u.kind === "frame") {
+      const r = P.rec(state, u.pilot);
+      s.push(`${u.chassis} frame${r ? ` · ${r.name}, ${Math.round(P.frameHit(state, r, u) * 100)}% to hit` : " · EMPTY"}`);
+      if (u.faults?.length) s.push(u.faults.join(", "));
+    }
+    if (u.kind === "pilot") {
+      const r = P.rec(state, u.pilot);
+      if (r) s.push(`${P.weapon(r)?.name ?? "unarmed"} · ${P.BAND_NAMES[P.band(r.loyalty)]}${P.madnessTotal(r) ? ` · Mad ${P.madnessTotal(r)}%` : ""}`);
+    }
     if (u.kind === "clampjaw" || u.kind === "pod") {
       const c = captiveOf(state, u.uid);
       const field = state.units.find((x) => x.cap?.by === u.uid);
@@ -624,7 +652,7 @@ function Token({ unit, state, target, open, onClick }: { unit: Unit; state: Game
   return (
     <button className={cls} onClick={onClick}>
       <div className="tn">
-        {SHORT[unit.kind]}
+        {(unit.kind === "frame" || unit.kind === "pilot" || (unit.kind === "capsule" && unit.role === "runner")) && unit.pilot ? P.rec(state, unit.pilot)?.name ?? SHORT[unit.kind] : SHORT[unit.kind]}
         {unit.crazy ? " ✱" : ""}
         {unit.leech ? " ⛭" : ""}
         {unit.pilot && unit.side === "enemy" ? " ●" : ""}
@@ -754,6 +782,21 @@ function Tech({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
             ))}
           </div>
         ))}
+        {state.shop.some(Boolean) && (
+          <div className="offer">
+            <div className="lane-label">QUARTERMASTER CRATE · PILOT GEAR</div>
+            {state.shop.map((id, i) =>
+              id ? (
+                <button key={i} className="btn mini" disabled={state.scrap < ITEMS[id].price} onClick={() => dispatch({ type: "buy", index: i })}>
+                  {ITEMS[id].name} · {ITEMS[id].price} Scrap
+                  <small>
+                    {ITEMS[id].side === "captive" ? "Captive gear" : "Crew gear"}: {ITEMS[id].text}
+                  </small>
+                </button>
+              ) : null,
+            )}
+          </div>
+        )}
         {state.captives.map((c) => (
           <div key={c.id} className="offer">
             <div className="lane-label">IN CUSTODY · {c.label.toUpperCase()}</div>

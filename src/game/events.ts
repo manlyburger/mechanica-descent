@@ -26,6 +26,7 @@ import {
 } from "./core";
 import type { GameState, Unit } from "./state";
 import { isStory, resolveStory, storyView } from "./story";
+import { isPilotEvent, pilotEventView, resolvePilotEvent } from "./pilot-events";
 
 export interface Option {
   id: string;
@@ -210,6 +211,7 @@ export function eventView(state: GameState): EventView | null {
   const ev = state.event;
   if (!ev) return null;
   if (isStory(ev.id)) return storyView(state);
+  if (isPilotEvent(ev.id)) return pilotEventView(state);
   const d = ev.data;
   const en = (n: number) => canPayEnergy(state, n, true);
   const builder = allies(state, "builder")[0];
@@ -380,6 +382,7 @@ export function resolveEvent(state: GameState, option: string, flow: Flow) {
   const ev = state.event;
   if (!ev) return;
   if (isStory(ev.id)) return resolveStory(state, option, flow);
+  if (isPilotEvent(ev.id)) return resolvePilotEvent(state, option, flow);
   const view = eventView(state);
   const chosen = view?.options.find((x) => x.id === option);
   if (!chosen || !chosen.enabled) return;

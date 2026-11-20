@@ -48,7 +48,9 @@ export type UnitKind =
   | "bishop"
   | "capsule"
   | "relay"
-  | "prisoner";
+  | "prisoner"
+  | "frame"
+  | "pilot";
 
 export interface DepthRow {
   alwaysLight: number;
@@ -352,6 +354,8 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   bishop: { name: "Relay Bishop", hp: 7, atk: 2, missiles: 0, size: "medium", ejectAt: 3, capsuleTurns: 2, ejection: "The command pod lifts off the chassis under its own power, antennae still turning.", tags: ["mechanical", "piloted", "team"] },
   capsule: { name: "Escape Capsule", hp: RULES.capsuleHp, atk: 0, missiles: 0, size: "small", tags: ["mechanical"] },
   relay: { name: "Command Relay", hp: 6, atk: 0, missiles: 0, armor: 1, size: "heavy", tags: ["mechanical"] },
+  frame: { name: "Salvaged Frame", hp: 7, atk: 2, missiles: 0, tags: ["mechanical", "machine"] },
+  pilot: { name: "Pilot on foot", hp: 4, atk: 0, missiles: 0, size: "small", tags: [] },
   prisoner: { name: "The Prisoner", hp: 7, atk: 3, missiles: 0, size: "medium", tags: ["mechanical", "machine"] },
 };
 

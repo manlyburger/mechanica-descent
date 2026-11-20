@@ -250,7 +250,9 @@ export function gatherCustody(state: GameState): CustodyItem[] {
     const team = ROLES.includes(role) && !!u.pilot;
     const base = { bands: cap.bands, by: cap.by, hp: u.hp, tapped: !!u.note?.includes("tapped") };
     if (u.kind === "capsule") {
-      out.push({ ...base, id: u.uid, kind: "capsule", pilot: u.pilot, person: false, label: team ? `${CALLSIGN[role]}'s pilot, in the capsule` : "The capsule" });
+      const name = state.roster.find((r) => r.id === u.pilot)?.name;
+      const lbl = u.role === "runner" || (name && !team) ? `${name ?? "The pilot"}, caught running` : team ? `${CALLSIGN[role]}'s pilot, in the capsule` : "The capsule";
+      out.push({ ...base, id: u.uid, kind: "capsule", pilot: u.pilot, person: false, label: lbl });
       continue;
     }
     if (team) {

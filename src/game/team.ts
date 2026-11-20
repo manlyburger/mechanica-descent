@@ -4,6 +4,7 @@
 
 import { RULES, UNITS, label, type UnitKind } from "./data";
 import { chance, living, log, roll } from "./core";
+import { syncRoster } from "./pilots";
 import type { GameState, Pilot, PilotStatus, Unit } from "./state";
 import { CALLSIGN, PILOT_ID, RADIO, type Role } from "./team-text";
 
@@ -19,7 +20,7 @@ export function pursuing(state: GameState): boolean {
   return state.team.pursuit === "active" || state.team.pursuit === "disrupted";
 }
 /** A pilot who can still take part in the pursuit, now or later. */
-function atLarge(p: Pilot): boolean {
+export function atLarge(p: Pilot): boolean {
   return p.status === "active" || p.status === "escaped" || p.status === "recovered";
 }
 /** On the field right now: in a mech, or in a capsule that has not left. */
@@ -97,6 +98,8 @@ export function evaluate(state: GameState) {
 
 /** The one place a pilot's status changes. Applies the bounded, one-time consequences. */
 export function setPilot(state: GameState, id: string | undefined, status: PilotStatus, how = "") {
+  // The person comes first: the roster may take a tracked escape over entirely.
+  if (syncRoster(state, id, status)) return;
   const p = pilot(state, id);
   const t = state.team;
   if (!p || p.status === status) return;

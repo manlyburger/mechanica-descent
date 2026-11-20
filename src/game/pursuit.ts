@@ -128,7 +128,7 @@ function launch(state: GameState, u: Unit) {
   // A Critical Kilnheart goes up behind the rocket; the capsule is already clear of it.
   if (critical) explode(state, u, false);
   else {
-    addWreck(state, { kind: u.kind, side: "enemy", value: 2 });
+    addWreck(state, { kind: u.kind, side: "enemy", value: 2, src: "pilot:" + pilotId });
     log(state, "The abandoned frame is yours to strip.");
   }
   spawn(state, "capsule", "enemy", slot, {

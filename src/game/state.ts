@@ -1,7 +1,7 @@
 import type { CustodyItem } from "./capture";
 import { RULES, type CardId, type ChoiceId, type Phase, type Side, type UnitKind } from "./data";
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface Leech {
   cardUid?: string; // absent for temporary leeches
@@ -115,6 +115,10 @@ export interface Unit {
   // clampjaw
   apprehend?: string; // ordered target
   holding?: string; // captive id carried between fights
+  // frame
+  chassis?: string;
+  faults?: string[];
+  bolting?: boolean;
   // pod
   powerOff?: boolean;
   occupied?: number; // occupied turns since the last upkeep
@@ -141,7 +145,7 @@ export interface Captive {
   hp: number;
 }
 
-export type PilotStatus = "active" | "escaped" | "recovered" | "captured" | "dead" | "withdrawn";
+export type PilotStatus = "active" | "escaped" | "recovered" | "captured" | "dead" | "withdrawn" | "turned";
 
 export interface Pilot {
   id: string;
@@ -151,6 +155,45 @@ export interface Pilot {
   returnsIn?: number;
   /** The one replacement opportunity has been used. */
   replaced: boolean;
+}
+
+/** One persistent person. Same id across enemy, captive, runner, crew. */
+export interface PilotRec {
+  id: string;
+  name: string;
+  origin: string;
+  role?: string; // R-8 chassis role
+  level: number;
+  xp: number;
+  base: { mental: number; skill: number; endurance: number };
+  earned: { mental: number; skill: number; endurance: number };
+  points: number;
+  hp: number;
+  madness: number; // 0-100
+  recovering: number; // temporary pool that drains 2 per turn
+  slots: (ItemInst | null)[]; // always 4 long
+  slot4: boolean;
+  loyalty: number; // 0-100
+  custody: "free" | "captive" | "ally" | "fleeing" | "dead";
+  spec: string;
+  trait: string;
+  assignment: string; // "" | "foot" | frame unit uid
+  strain: number;
+  injuredUntreated: boolean;
+  agreed: "" | "kept" | "broken";
+  talkedRoom: number;
+  tightenedRoom: number;
+  boltTurn?: number; // hidden: the turn this sortie's escape attempt comes
+  away: number; // rooms until a separated pilot is found
+  kills: number;
+  sorties: number;
+  history: string[];
+}
+
+export interface ItemInst {
+  uid: string;
+  id: string;
+  charges?: number;
 }
 
 export type Pursuit = "dormant" | "active" | "disrupted" | "withdrawn" | "broken" | "commanderCaptured";
@@ -182,6 +225,8 @@ export interface Wreck {
   /** Awarded at room clear with no Threat (Builder Drone's Last Useful Act, spilled cargo). */
   free?: boolean;
   pile?: boolean;
+  /** Cockpit Part source key, when it differs from the wreck id. */
+  src?: string;
 }
 
 export interface CardInst {
@@ -255,6 +300,14 @@ export interface GameState {
   ejected: { card: CardInst; count: number; stripped: boolean } | null;
 
   captives: Captive[];
+  roster: PilotRec[];
+  items: ItemInst[];
+  parts: number;
+  partsRolled: string[];
+  shop: string[];
+  nightmareFight: boolean;
+  /** Tracked escapees who turn up running in the next fight. */
+  pendingRunners: string[];
   /** Pilots alive inside wedged wrecks, waiting for someone to cut them out. */
   pinned: { pilot: string; role: UnitKind }[];
   /** Restrained enemies to deal with now that the fight is over. */
@@ -300,7 +353,7 @@ export interface GameState {
   extension: boolean;
   navFlag: boolean;
   lastKilled: UnitKind | null;
-  seen: { droneRemembers: boolean; patient: boolean; yard: boolean; prisoner: boolean };
+  seen: { droneRemembers: boolean; patient: boolean; yard: boolean; prisoner: boolean; mech?: boolean; cargo?: boolean; fleeing?: number };
   preCommission: boolean;
   revealNext: boolean;
   firstStrike: boolean; // player gets +1 Energy on turn 1 of the next fight
@@ -332,8 +385,12 @@ export type Action =
   | { type: "specialize"; uid: string; variant: string }
   | { type: "unequip"; what: "servo" }
   | { type: "captive"; holder: string; what: "release" | "dismantle" }
+  | { type: "pilot"; id: string; op: PilotOp; item?: string; slot?: number; stat?: string; target?: string }
+  | { type: "buy"; index: number }
   | { type: "nextRoom" }
   | { type: "qa"; cmd: string; n?: number; s?: string };
+
+export type PilotOp = "equip" | "unequip" | "unlock" | "stat" | "assign" | "talk" | "treat" | "agree" | "recruit" | "tighten";
 
 export function newTeam(): Team {
   const roles = ["needleback", "latchback", "widow", "kilnheart", "bishop"];
@@ -406,6 +463,13 @@ export function createGame(seed = 1): GameState {
     pendingScrap: 0,
     ejected: null,
     captives: [],
+    roster: [],
+    items: [],
+    parts: 0,
+    partsRolled: [],
+    shop: [],
+    nightmareFight: false,
+    pendingRunners: [],
     pinned: [],
     custody: [],
     tap: null,

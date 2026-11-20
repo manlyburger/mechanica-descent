@@ -1,0 +1,1106 @@
+MECHANICA DESCENT
+
+Pilot Equipment, Progression, Loyalty & New Choice Encounters
+
+Detailed Design and Implementation Plan
+
+Status: PROPOSED
+Target: Next Mechanica Descent expansion
+Dependencies: Existing pilot captivity, ejection, Mech Team, Commandeered Cockpit, and encounter systems
+
+1. Primary goals
+
+Introduce individual equipment and character progression for captive and allied pilots.
+
+Every pilot should have:
+
+* An independent equipment screen.
+* Three starting equipment slots.
+* A fourth unlockable slot.
+* Randomized Mental, Skill, and Endurance stats.
+* A character level and experience progression.
+* Persistent loyalty and cooperation information.
+* A specialized equipment pool determined by custody and allegiance.
+* Individual status, history, and assignment information.
+
+Also introduce three new choice encounter types:
+
+1. Empty-cockpit mech discovery.
+2. Suspicious cargo up a ladder.
+3. Fleeing pilot encounter.
+
+Retain pilot identity when transferring between captivity, field assignments, and allied status.
+
+⸻
+
+2. Pilot equipment screens
+
+General layout
+
+Selecting a pilot opens a character-management panel containing:
+
+Header
+
+* Portrait or mech-pilot icon.
+* Pilot name or identifier.
+* Level and XP.
+* Origin or former faction.
+* Current allegiance and custody.
+* Current mech assignment.
+
+Equipment
+
+* Four equipment positions.
+* First three available immediately.
+* Fourth initially locked.
+* Items presented visually in equipped slots.
+
+Character information
+
+* Mental.
+* Skill.
+* Endurance.
+* Current Madness.
+* Current HP or condition, where supported.
+* Loyalty/cooperation estimate.
+* Specializations and known tendencies.
+
+Actions
+
+* Equip.
+* Unequip.
+* Upgrade slot.
+* View stats.
+* Inspect loyalty.
+* Assign to mech.
+* Return to custody or assign another duty.
+
+Keep the interface compact on phones. Use a dedicated pilot panel rather than crowding the combat field.
+
+2.1 Equipment slots
+
+Every pilot begins with exactly three equipment slots.
+
+Slot	Initial availability
+Slot 1	Unlocked
+Slot 2	Unlocked
+Slot 3	Unlocked
+Slot 4	Locked — requires 3 Cockpit Parts
+
+A slot accepts one compatible item.
+
+Equipment is held in the individual pilot’s inventory record, not attached to a generic pilot class.
+
+The fourth slot is unlocked separately for each pilot.
+
+It stays unlocked when that pilot changes status between captive and ally.
+
+2.2 Fourth-slot upgrade
+
+Introduce a new material:
+
+Cockpit Parts
+
+* Uncommon random salvage drop from enemies equipped with actual cockpits.
+* Suggested initial drop probability: 20% per eligible cockpit recovery.
+* Can appear after capturing an intact cockpit or salvaging an eligible cockpit-equipped enemy.
+* A given cockpit source can generate only one part-drop opportunity.
+* Do not multiply drops because the same pilot ejects, is recaptured, and changes mechs.
+
+Collecting three Cockpit Parts allows the player to unlock one pilot’s fourth slot.
+
+Upgrade action: Spend 3 Cockpit Parts → unlock Slot 4.
+
+Cockpit Parts are stored in the shared resource inventory until spent.
+
+If the pilot later escapes, the upgrade remains attached to that pilot’s record. It cannot be farmed again by recapturing them.
+
+⸻
+
+3. Captive equipment categories
+
+Captive equipment is primarily for security, communication management, and controlled interactions.
+
+These are equipment items, not automatic guarantees of obedience.
+
+3.1 Gags
+
+Gags prevent or impair intelligible spoken communication while fitted.
+
+They do not automatically stop electronic radios, automated alarms, remote relays, or text-based communications.
+
+Suggested items:
+
+Item	Gameplay effect
+Basic Muffle Wrap	Blocks ordinary spoken alerts; inexpensive and removable
+Reinforced Voice Seal	More resistant to removal; blocks vocal interaction while fitted
+Acoustic Suppression Mask	Blocks ordinary audible communication and masks muffled vocal noise at distance
+Quick-Release Muzzle	Moderate speech suppression, easy for the player to remove before dialogue or negotiation
+
+Gagged captives should retain expressive eyes, head movement, and muffled vocal reactions where appropriate.
+
+If the player needs the pilot to speak to access a facility system or negotiate, the equipment may need to be temporarily removed.
+
+A gag must not be treated as a method of suppressing all possible warnings.
+
+3.2 Restraints
+
+Item	Gameplay effect
+Industrial Lockbands	Increases physical restraint security
+Reinforced Cuffs	Stronger protection against ordinary escape attempts
+Magnetic Ankle Locks	Reduces unauthorized movement
+Armored Restraint Harness	Strong restraint but limits transfers and field assignments
+Remote Release Shackles	Can be disengaged by the player using a permitted remote command
+
+Allow two compatible restraint items if the slots permit it.
+
+For example, a captive can use two Lockbands, one gag, and one relay device after unlocking the fourth slot.
+
+Do not allow unlimited stacking or multiple incompatible harnesses.
+
+3.3 Relay devices
+
+Relay equipment monitors or controls specific communication channels and status information.
+
+Item	Gameplay effect
+Captive Status Relay	Reports restraint damage and escape warnings
+Communication Monitor	Detects compatible unauthorized transmissions
+Local Signal Isolator	Blocks a defined radio connection while active
+Tracking Relay	Tracks a captive during permitted movement or escape
+Custody Diagnostic Relay	Warns when restraints or containment systems begin failing
+
+A monitoring device does not automatically prevent the event it detects.
+
+All devices should specify which communication channels or physical signals they actually affect.
+
+Example captive loadout
+
+Captured Needleback Pilot — 4 slots unlocked
+
+* Reinforced Voice Seal
+* Industrial Lockbands
+* Magnetic Ankle Locks
+* Communication Monitor
+
+The pilot is difficult to move without authorization and cannot issue ordinary spoken warnings, but may still resist, exploit an unmonitored electronic channel, or refuse cooperation.
+
+⸻
+
+4. Allied pilot equipment categories
+
+Allied pilots have an equipment pool focused on combat, survivability, and tactical support.
+
+A previously captive pilot who becomes a genuine ally can use this equipment pool according to their current status and permissions.
+
+4.1 Weapons
+
+Equipment	Effect
+Standard Sidearm	Basic personal ranged attack
+Heavy Sidearm	Higher damage, lower accuracy
+Compact SMG	Multiple light attacks where the combat engine supports them
+Emergency Carbine	Improved combat reliability during dismounted encounters
+Shock Pistol	Temporary nonlethal suppression of eligible targets
+
+Use existing personal combat rules where available.
+
+Do not allow a gun to function as an additional mech-mounted weapon simply because the pilot is inside a cockpit.
+
+4.2 Enhancement modules
+
+Module	Effect
+Stabilized Targeting	+5% accuracy
+Mental Dampener	Reduces Madness-related penalties
+Reinforced Suit Padding	Improves survival against personal damage
+Reflex Amplifier	Small defensive reaction bonus
+Cockpit Synchronizer	Improves compatible piloted-mech performance
+
+Bonuses should use the same caps as stat and equipment calculations.
+
+4.3 Support items
+
+Item	Effect
+Emergency Medkit	Restores pilot condition or HP
+Portable Scanner	Reveals appropriate encounter information
+Repair Toolkit	Assists compatible mech repairs
+Salvage Beacon	Improves retrieval of eligible wreckage
+Emergency Escape Beacon	Helps locate or recover an ejected allied pilot
+
+Items with consumable charges must track charges per instance.
+
+Example allied loadout
+
+Level 3 Recovery Pilot — 4 slots unlocked
+
+* Standard Sidearm
+* Cockpit Synchronizer
+* Repair Toolkit
+* Emergency Medkit
+
+This pilot is a useful support specialist both inside and outside a mech.
+
+⸻
+
+5. Pilot stats and levels
+
+Introduce three primary RPG attributes:
+
+* Mental
+* Skill
+* Endurance
+
+Each pilot receives randomized base stats.
+
+Higher-level pilots have stronger potential stats, wider generation ranges, and additional progression bonuses.
+
+5.1 Proposed generation ranges
+
+Level	Stat generation range	Additional benefit
+1	1–5 per stat	Starting specialization
+2	2–7	+1 earned stat point
+3	2–9	+1 earned stat point
+4	3–11	+1 earned stat point
+5	4–12	+1 earned stat point, specialization improvement
+
+These ranges are for generating a pilot at that level.
+
+Existing pilots should never lose stats or be rerolled downward on level-up.
+
+Level-up process
+
+When a pilot gains a level:
+
+1. Increase level.
+2. Increase maximum stat potential.
+3. Award one assignable stat point.
+4. Apply any level milestone benefit.
+5. Preserve prior equipment and custody history.
+
+Suggested XP sources:
+
+* Completing combat sorties.
+* Successful recovery operations.
+* Discovering useful intelligence.
+* Completing difficult assignments.
+* Surviving hazardous encounters.
+* Fulfilling meaningful cooperation agreements.
+
+Simply keeping a captive imprisoned should not generate unlimited XP.
+
+⸻
+
+6. Mental stat
+
+Purpose: Resistance to Madness effects and Nightmare damage.
+
+Mental determines the pilot’s resilience during anomalous or psychologically disruptive encounters.
+
+6.1 Madness effect reduction
+
+Proposed formula:
+
+Madness penalty reduction = 4% × Mental, capped at 40%.
+
+Examples:
+
+Mental	Madness penalty reduction
+2	8%
+5	20%
+8	32%
+12	40% (cap)
+
+This reduces the severity of applicable Madness penalties, rather than automatically deleting accumulated Madness.
+
+The pilot’s actual Madness percentage remains separately tracked.
+
+6.2 Nightmare damage resistance
+
+During a Nightmare encounter, Mental also provides a chance to ignore one point of incoming damage.
+
+Proposed formula:
+
+Nightmare resistance chance = 2% × Mental, capped at 24%.
+
+Roll once for each eligible incoming damage event.
+
+A successful roll prevents one point, never more than one.
+
+Mental’s damage resistance is independent of ordinary armor and Endurance.
+
+Nightmare encounters should clearly display the relevant resistance outcome.
+
+⸻
+
+7. Skill stat
+
+Purpose: Accuracy, technical competence, and special encounter choices.
+
+7.1 Accuracy
+
+Proposed formula:
+
+Accuracy bonus = 3% × Skill, capped at +30 percentage points.
+
+Apply only to compatible attacks using a pilot’s accuracy.
+
+The final attack probability must respect the combat engine’s existing minimum and maximum hit limits.
+
+7.2 Skill thresholds
+
+Use Skill checks to unlock unique dialogue, combat, and facility options.
+
+Suggested thresholds:
+
+Skill requirement	Example
+4+	Identify a damaged mech component
+6+	Operate a specialized control terminal
+8+	Repair or stabilize a difficult subsystem
+10+	Attempt a rare technical encounter resolution
+
+If a branch requires Skill 8 and the pilot has Skill 6, show the requirement rather than silently failing the action.
+
+Equipment may supply bonuses if explicitly permitted.
+
+7.3 Specialty considerations
+
+A skilled Needleback pilot is not automatically an expert at operating Kilnheart’s heavy drilling frame.
+
+Keep pilot specialties separate from Skill.
+
+High Skill improves general performance, while specialties determine which advanced tasks are compatible.
+
+⸻
+
+8. Endurance stat
+
+Purpose: Physical survivability and resistance to ordinary damage.
+
+8.1 Damage resistance
+
+Proposed formula:
+
+Chance to ignore one damage = 2.5% × Endurance, capped at 30%.
+
+Roll once per eligible damage event.
+
+A successful check prevents one point.
+
+It does not completely negate high-damage attacks.
+
+8.2 Death avoidance
+
+When an incoming event would kill a pilot, perform an Endurance survival check if the event is survivable under existing rules.
+
+Proposed formula:
+
+Death avoidance chance = 3% × Endurance, capped at 36%.
+
+On success:
+
+* Pilot survives at 1 HP or enters the game’s equivalent critical condition.
+* Pilot cannot perform another death-avoidance check against the same damage event.
+* Apply normal injury and incapacitation consequences.
+
+Catastrophic events explicitly designated unsurvivable do not receive a generic immunity roll.
+
+For example, Cockpit Wedge still prevents ejection. Endurance does not magically eject a pilot from an exploding mech.
+
+8.3 Combined Mental and Endurance defense
+
+During Nightmare encounters, both attributes may contribute.
+
+Resolve damage prevention in this order:
+
+1. Existing armor and cover.
+2. Mental Nightmare resistance, if applicable.
+3. Endurance damage resistance, if damage remains.
+4. Apply remaining damage.
+5. Check Endurance death avoidance if lethal and eligible.
+
+Limit the combined attribute-based prevention to one damage point per incoming hit, even if both checks succeed.
+
+This prevents extremely defensive pilots from generating excessive damage immunity.
+
+⸻
+
+9. Loyalty, cooperation, and captive selection
+
+Pilot cooperation must be visible without exposing every hidden betrayal calculation.
+
+9.1 Loyalty bands
+
+Proposed scale: 0–100.
+
+Loyalty	State	Assignment behavior
+0–24	Hostile	Refuses most voluntary assignments
+25–44	Unwilling	Restricted or negotiation-only assignments
+45–64	Partially Willing	Limited tasks, visible concerns and risks
+65–84	Cooperative	Regular assignments with remaining risks
+85–100	Loyal	Trusted allied assignments, subject to individual commitments
+
+Loyalty is not identical to restraint security.
+
+9.2 Orange-red captive selection barrier
+
+For Hostile or Unwilling captives, place a distinctive orange-red barrier across unavailable assignment choices.
+
+Suggested appearance:
+
+* Translucent orange-red overlay.
+* Lock or warning symbol.
+* Visible captive portrait behind the overlay.
+* Label: UNWILLING — ASSIGNMENT RESTRICTED
+
+Attempting selection opens an explanation:
+
+* Why the assignment is unavailable.
+* Current loyalty band.
+* What conditions could improve cooperation.
+* Estimated time to reach the next useful stage.
+* Available negotiation choices.
+
+Important: The barrier applies to voluntary assignments, not the entire pilot management screen.
+
+Players must still be able to inspect or change appropriate containment equipment and manage custody.
+
+9.3 Partially willing captives
+
+For pilots in the Partially Willing band, show a generalized expectation summary.
+
+Example:
+
+Needleback Pilot — Partially Willing
+
+* Likely to perform scouting.
+* May refuse attacks against former teammates.
+* Possible escape attempt if given a fast mech.
+* More reliable with supervision or a fulfilled agreement.
+* Loyalty estimate: approximately 2–4 suitable cooperative assignments under current conditions.
+
+Do not expose the exact hidden betrayal roll.
+
+9.4 Loyalty-time estimates
+
+Both hostile/unwilling and partially willing captives require a progression estimate.
+
+Use a projected range based on:
+
+* Current loyalty.
+* Pilot personality.
+* Previous treatment.
+* Existing agreements.
+* Current captivity duration.
+* Available cooperation opportunities.
+* Former team status.
+
+Example estimates:
+
+Hostile Bishop: “Estimated 6–10 successful cooperation opportunities; currently blocked by unresolved faction loyalty.”
+
+Partially Willing Widow Pilot: “Estimated 2–3 successful assignments to reach Cooperative.”
+
+Unwilling Kilnheart Pilot: “No reliable progression under current conditions. Resolve the outstanding conflict before an estimate is possible.”
+
+Do not promise loyalty solely because time passes.
+
+The estimate must update when circumstances materially change.
+
+9.5 Equipment transitions
+
+When a captive becomes allied:
+
+* Preserve character level.
+* Preserve stats.
+* Preserve fourth-slot upgrade.
+* Preserve identity and history.
+* Move incompatible captive equipment to the player’s inventory through a valid transition.
+* Enable compatible ally equipment.
+
+If an allied pilot becomes hostile again, do not duplicate or erase their equipment. Preserve actual item ownership and resolve custody appropriately.
+
+⸻
+
+10. New encounter — Empty-Cockpit Mech
+
+Type: Uncommon choice encounter
+
+The player discovers an unpiloted mech suit inside an industrial maintenance area.
+
+It has an accessible cockpit but no current pilot.
+
+Initial choices
+
+Inspect the Frame
+
+* Reveal chassis condition.
+* Identify compatible pilots.
+* Examine special equipment.
+
+Assign an Allied Pilot
+
+* Use a compatible available pilot.
+* Activate the mech according to its condition.
+
+Assign a Cooperative Captive
+
+* Use existing Commandeered Cockpit mechanics.
+* Apply normal betrayal and supervision rules.
+
+Salvage
+
+* Dismantle the machine for Scrap or components.
+
+Leave
+
+* Continue without claiming the frame.
+
+10.1 Uncommon damaged variant
+
+A minority of these encounters contain an already-damaged mech.
+
+Proposed variant probability: 25%.
+
+The damaged mech may have:
+
+* Reduced starting HP.
+* One damaged weapon.
+* Faulty sensors.
+* A weak cockpit seal.
+* Unstable movement equipment.
+* A repairable reactor problem.
+
+Provide visual evidence of the damage.
+
+Damaged-mech choices
+
+Repair First
+
+* Spend Scrap or use Builder Drone maintenance.
+* Improve safety and usability.
+
+Pilot Immediately
+
+* Avoid preparation costs.
+* Accept damage and malfunction risk.
+
+Strip for Components
+
+* Gain salvage without activating the chassis.
+
+Inspect Cockpit
+
+* Reveal whether its ejection equipment is functional.
+
+A damaged discovered mech should still be able to become useful if the player makes the necessary repairs.
+
+⸻
+
+11. New encounter — Suspicious Cargo Above
+
+Type: Choice / exploration encounter
+
+The player discovers an elevated storage platform or suspicious cargo container accessible by ladder.
+
+A warning label is damaged or missing.
+
+The contents cannot be identified clearly from below.
+
+Available options
+
+Send an Unmeched Pilot
+
+* Choose an eligible pilot not currently inside a mech.
+* Pilot climbs the ladder and inspects the cargo.
+* Requires cooperation if the pilot is captive.
+
+Inspect from Below
+
+* Use a compatible scanner or skill check.
+* May identify the hazard before sending anyone.
+
+Use an Appropriate Drone
+
+* Send a compatible small mechanical unit instead.
+* Avoid putting a pilot directly at risk.
+* May require specialized equipment.
+
+Leave the Cargo
+
+* Skip the reward and danger.
+
+11.1 Normal reward
+
+Most containers hold a random item.
+
+Possible rewards:
+
+* Ammunition.
+* Scrap.
+* Repair equipment.
+* Support item.
+* Pilot equipment.
+* Rare mechanical component.
+
+Use the encounter’s existing loot tier and inventory rules.
+
+11.2 Toxic gas complication
+
+Introduce an uncommon chance that the cargo releases toxic gas when opened.
+
+Proposed chance: 15%.
+
+Consequences:
+
+* Pilot receives a clear exposure warning.
+* Apply eligible status or damage effects using existing hazard rules.
+* Pilot may lose loyalty if they believe the player knowingly endangered them.
+* The item reward may be damaged or unavailable.
+
+Loyalty effect
+
+Suggested initial range:
+
+* Cooperative pilot exposed unexpectedly: -3 to -7 loyalty.
+* Partially willing pilot: -5 to -10 loyalty.
+* Hostile captive sent into danger: potentially larger resentment, with no assumption that further coercion improves loyalty.
+
+Modifiers:
+
+* Prior warning and voluntary acceptance reduce resentment.
+* Concealing a known hazard increases resentment.
+* Prompt medical treatment may mitigate the loss.
+* A successful Skill inspection can prevent or reveal the danger.
+
+Do not treat every accidental hazard as automatic betrayal.
+
+11.3 Skill checks
+
+Skill 4+: Identify damaged hazard markings.
+
+Skill 6+: Recognize a suspicious pressure-release mechanism.
+
+Skill 8+: Attempt to inspect or retrieve contents without triggering the gas release.
+
+These are proposed branch requirements.
+
+11.4 Visual feedback
+
+When the hazard triggers:
+
+* Cargo lid opens.
+* Gas sprays outward.
+* Pilot recoils and moves away.
+* Display a short status message.
+* Show any loyalty change.
+* Offer appropriate recovery actions.
+
+The encounter should be short but memorable.
+
+⸻
+
+12. New encounter — Fleeing Pilot
+
+Type: Recruitable pilot encounter
+
+A lone pilot emerges from a damaged corridor, running from an unseen danger.
+
+They have no usable mech.
+
+The player may help, question, or leave them.
+
+12.1 Primary reward
+
+If the player successfully recruits the pilot:
+
+* Gain one randomly generated Level 1 pilot.
+* Roll Mental, Skill, and Endurance.
+* Assign a random compatible specialization.
+* Give three starting equipment slots.
+* Begin with the fourth slot locked.
+* Add the pilot to the persistent roster.
+
+12.2 Madness chance
+
+On recruitment:
+
+80% chance: The pilot starts with 10–20% Madness.
+
+20% chance: The pilot starts with 0% Madness.
+
+Use the game’s normal 0–100 Madness percentage scale.
+
+12.3 Madness recovery
+
+The recruited pilot’s temporary Madness decreases by 2 percentage points per completed turn.
+
+Examples:
+
+* 10% → 8% → 6% → 4% → 2% → 0%.
+* 20% → 18% → 16%, continuing until zero.
+
+This means a pilot recruited at 10–20% can recover naturally over approximately 5–10 turns.
+
+Do not reduce the pilot’s other Madness gains automatically unless they are part of the same temporary recovery pool.
+
+Track the fleeing pilot’s initial recoverable Madness separately from later Madness effects so recovery cannot erase unrelated newly accumulated Madness.
+
+Mental reduces the effects of their Madness while it remains active.
+
+12.4 Encounter choices
+
+Offer Shelter
+
+* Recruit the pilot if they accept.
+* Grant a safe transition to the roster.
+
+Ask What Happened
+
+* Reveal a short account of the danger.
+* May provide a route clue or threat warning.
+
+Provide Medical Help
+
+* Spend a compatible resource.
+* Improve immediate condition or recovery.
+* May grant an initial cooperation benefit.
+
+Send Them Away
+
+* Decline recruitment.
+* Pilot attempts to leave the area.
+
+Recruit and Assign Immediately
+
+* Available if a compatible unpiloted mech is present.
+* The pilot enters active service with their remaining Madness.
+
+12.5 Personality variation
+
+New Level 1 pilots should have modest randomized character traits.
+
+Examples:
+
+* Nervous rookie.
+* Overconfident trainee.
+* Quiet maintenance operator.
+* Wounded scout.
+* Former recovery specialist.
+* Frightened civilian-trained operator.
+
+Do not imply that every fleeing pilot belongs to Relay Section R-8.
+
+Some may be entirely unrelated to the pursuing mech team.
+
+12.6 Event consequences
+
+The fleeing pilot may have:
+
+* Seen a dangerous machine.
+* Escaped an earlier failed engagement.
+* Lost a mech.
+* Been separated from a friendly group.
+* Witnessed an anomalous facility event.
+
+These explanations can change initial dialogue and optional route clues.
+
+They should not automatically establish major new canon events.
+
+⸻
+
+13. Integration with existing systems
+
+Captive pilots
+
+* Retain existing captivity states.
+* Equipment does not automatically force cooperation.
+* Loyalty barriers restrict assignments, not custody management.
+* Existing capture limits remain intact.
+
+Allied pilots
+
+* Gain full equipment and leveling support.
+* Can be assigned to compatible mechs.
+* Can operate on foot where the game supports dismounted actions.
+* May be injured, captured, or killed according to normal rules.
+
+Relay Section R-8
+
+* Existing named pilots receive appropriate starting stats and specialties.
+* Captured R-8 pilots retain their identities.
+* Loyal recruitment does not create duplicate pilots.
+* Betrayal opportunities still use pilot personality and existing faction relationships.
+* New equipment does not retroactively cancel established pursuit outcomes.
+
+Improvised Army
+
+* Builder Drones can repair compatible discovered mechs.
+* Scrap Shepherds can recover eligible salvaged frames.
+* Panic Jack can defend deployed allied pilots or relevant machines.
+* Unfinished Warframes can interact with piloting only when explicitly compatible.
+
+Cockpit equipment
+
+Cockpit Parts come from eligible cockpit-equipped enemies.
+
+Cockpit Wedge remains limited to blocking physical cockpit opening and ejection.
+
+It does not block radio communications or protect a pilot from explosions.
+
+⸻
+
+14. UI requirements
+
+Pilot roster
+
+Display pilots with compact indicators for:
+
+* Level.
+* Current status.
+* Cooperation.
+* Specialization.
+* Madness.
+* Equipment slots.
+
+Equipment screen
+
+Required interactions:
+
+* Inspect equipped item.
+* Select compatible inventory equipment.
+* Equip and unequip.
+* See item effects.
+* See stat changes.
+* Unlock fourth slot.
+* Compare current and replacement items.
+
+Stats screen
+
+Display:
+
+Mental
+
+* Madness penalty reduction.
+* Nightmare damage-resistance chance.
+
+Skill
+
+* Accuracy bonus.
+* Current encounter-choice thresholds.
+
+Endurance
+
+* Damage-resistance chance.
+* Death-avoidance chance.
+
+Loyalty presentation
+
+Hostile/unwilling captives use the orange-red assignment barrier.
+
+Partially willing captives show generalized expectations and a progression estimate.
+
+Fully cooperative allies show ordinary assignment controls.
+
+Hidden betrayal rolls remain hidden.
+
+Encounter choices
+
+New encounter screens must show:
+
+* Available pilots.
+* Whether each pilot is inside a mech.
+* Relevant Skill requirements.
+* Resource costs.
+* Warnings about known risks.
+* Resulting rewards or consequences.
+
+Do not hide important eligibility checks until after the player spends resources.
+
+⸻
+
+15. Determinism and save data
+
+Persist:
+
+* Pilot ID.
+* Level and XP.
+* Rolled base stats.
+* Earned stat points.
+* Current HP/condition.
+* Madness pools and recovery.
+* Equipment assignments.
+* Slot unlock state.
+* Cockpit Parts inventory.
+* Loyalty/cooperation history.
+* Custody state.
+* Mech assignment.
+* Encounter completion.
+* Claimed rewards.
+
+All stat generation, item drops, and encounter hazard results must be seeded.
+
+Never reroll pilot statistics simply because the player closes and reopens the equipment screen.
+
+Prevent duplication through transfers between captive, ally, and mech states.
+
+⸻
+
+16. Testing and validation
+
+Equipment
+
+* New pilots begin with three slots.
+* Fourth slot is locked.
+* Cockpit Parts drop only from eligible cockpit sources.
+* Three parts unlock one extra slot.
+* Upgrade remains attached to the pilot.
+* Equipped items cannot be duplicated through custody changes.
+* Incompatible equipment is rejected.
+
+Stats and levels
+
+* Level 1 pilots use the correct randomized ranges.
+* Higher-level generated pilots use wider ranges.
+* Level-ups never lower existing stats.
+* Mental correctly reduces Madness penalties.
+* Mental Nightmare resistance works.
+* Skill improves applicable accuracy.
+* Skill thresholds unlock correct options.
+* Endurance mitigates ordinary damage.
+* Endurance survival check occurs at the correct time.
+* Combined damage prevention respects the one-point cap.
+
+Loyalty
+
+* Hostile captives show orange-red assignment barriers.
+* Unwilling captives cannot bypass restrictions.
+* Partially willing captives show expectations.
+* Both restricted and partially willing captives show valid loyalty progression estimates or clear blockers.
+* Time alone does not guarantee loyalty.
+* Existing betrayal events remain functional.
+
+Encounters
+
+Empty-Cockpit Mech
+
+* Normal mech discovery works.
+* Damaged variant generates correctly.
+* Compatible pilot assignment works.
+* Salvage rewards cannot be duplicated.
+
+Suspicious Cargo
+
+* Unmeched pilots can be assigned.
+* Gas complication triggers at the intended frequency.
+* Loyalty changes reflect circumstances.
+* Skill checks can reveal hazards.
+* Known hazards are communicated before commitment.
+
+Fleeing Pilot
+
+* Recruitment generates a Level 1 pilot.
+* 80% Madness chance is applied.
+* Madness starts between 10–20% on affected pilots.
+* Natural recovery reduces temporary Madness by 2 points per turn.
+* Newly earned Madness is not erased by the temporary recovery effect.
+* Pilot retains inventory and stats across rooms.
+
+⸻
+
+17. Implementation sequence
+
+Pass 1 — Pilot identity and equipment
+
+* Individual equipment screens.
+* Three initial slots.
+* Fourth slot unlock.
+* Cockpit Parts inventory and drops.
+
+Pass 2 — RPG progression
+
+* Random stats.
+* Level generation.
+* XP.
+* Mental, Skill, and Endurance effects.
+* Stat display and encounter thresholds.
+
+Pass 3 — Captive and ally equipment
+
+* Gags, restraints, relays.
+* Guns, enhancements, support items.
+* Equipment compatibility and inventory persistence.
+
+Pass 4 — Cooperation interface
+
+* Orange-red restrictions.
+* Partial cooperation summaries.
+* Estimated loyalty progression.
+* Integration with betrayal/assignment mechanics.
+
+Pass 5 — New encounters
+
+* Empty-Cockpit Mech.
+* Damaged variant.
+* Suspicious Cargo.
+* Fleeing Pilot.
+
+Pass 6 — Testing
+
+* Full regression of combat, capture, team AI, pilot assignments, cockpit recovery, and room progression.
+
+⸻
+
+18. Acceptance criteria
+
+The expansion is ready for a playable test when:
+
+1. Every captive and allied pilot has an individual equipment screen.
+2. All pilots begin with three equipment slots.
+3. Three uncommon Cockpit Parts can unlock a fourth equipment slot.
+4. Captive and allied equipment categories work independently.
+5. Pilots receive randomized Mental, Skill, and Endurance stats.
+6. Levels provide progression and access to higher stat ranges.
+7. Mental affects Madness and Nightmare resistance.
+8. Skill affects accuracy and encounter choices.
+9. Endurance affects ordinary damage resistance and survival.
+10. Unwilling captives show orange-red assignment barriers.
+11. Partially willing captives show generalized expectations.
+12. Restricted captives have meaningful loyalty progression estimates or identified blockers.
+13. All three new encounter types function.
+14. Fleeing pilots are generated at Level 1 with the specified Madness behavior.
+15. No equipment, pilots, resources, or encounter rewards duplicate across save/load or custody transfers.
+16. Existing mech-team, capture, combat, and story systems remain functional.
+
+⸻
+
+19. OPEN / TUNE LATER
+
+Do not silently establish:
+
+* Final cockpit-part drop rate.
+* Whether cockpit-part upgrades can be recovered from permanently lost pilots.
+* Final stat ranges and caps.
+* XP requirements.
+* Higher-level specialization bonuses.
+* Exact loyalty progression formulas.
+* Whether all equipment categories are available from the start.
+* Additional types of pilot armor or accessories.
+* Exact toxic-gas encounter probability.
+* Whether temporary Madness recovery can be accelerated with items.
+* Whether some recruitable pilots have unique narrative branches.
+
+Keep these configurable and separate from established canon.
+
+⸻
+
+Final design target
+
+Pilots should feel like individual assets with their own strengths, equipment, risks, and development.
+
+Capturing a skilled enemy pilot can provide a valuable new operator, but that pilot may remain dangerous or refuse cooperation.
+
+Recruiting a frightened Level 1 survivor should feel different: they may initially be unreliable because of Madness, but could become a capable specialist through experience.
+
+The fourth equipment slot gives cockpit salvage an additional purpose beyond chassis upgrades.
+
+Most importantly, the player should have meaningful reasons to care about who a pilot is, not merely whether they are available to occupy a cockpit.
+
+Each pilot should be someone the player can equip, develop, protect, negotiate with, or potentially lose.

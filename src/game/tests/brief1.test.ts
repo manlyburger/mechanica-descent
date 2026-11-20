@@ -354,6 +354,7 @@ describe("other brief-1 cards", () => {
   });
   it("Cold Reactor Cell pays 1 Energy of a Tech card and rolls an outcome when it empties", () => {
     let s = fight({ hand: "CELL,FOAM,FOAM,FOAM", energy: 0 });
+    const foams = s.hand.filter((c) => c.id === "FOAM").length;
     s = play(s, "CELL");
     expect(s.equip.cell).toBe(RULES.cellCharges);
     for (let i = 0; i < 3; i++) {
@@ -362,7 +363,7 @@ describe("other brief-1 cards", () => {
     }
     expect(s.equip.cell).toBe(0);
     expect(s.log.some((l) => /discharges safely|empty Cell casing|REACTOR BURST/.test(l))).toBe(true);
-    expect(s.hand.some((c) => c.id === "FOAM")).toBe(false);
+    expect(s.hand.filter((c) => c.id === "FOAM").length).toBe(foams - 3);
   });
   it("a Cell charge does not pay for non-Tech cards", () => {
     let s = fight({ hand: "CELL,GUN", energy: 0 });

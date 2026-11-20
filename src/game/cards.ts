@@ -29,6 +29,7 @@ import {
 import type { CardInst, GameState, Unit } from "./state";
 import { applyBand, bandTargets, canApprehend, captiveOf, dismantleCaptive, heldBy, loseCaptive, podFits, resolveTap, secured, tapSources, transferCaptive, vacantPod, type TapChoice } from "./capture";
 import { stabilize } from "./pursuit";
+import { has, lockShackles, rec as pilotRec } from "./pilots";
 import { setPilot } from "./team";
 
 // ---------- targets ----------
@@ -436,6 +437,7 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
     add("release", "Release early", `Break the seal now. Heals only ${RULES.coffinEarlyHeal}.`);
     return out;
   }
+  if (u.bolting && pilotRec(state, u.pilot) && has(pilotRec(state, u.pilot)!, "shackles")) add("lock", "Lock the shackles", "Remote Release Shackles: stop them before they run. They will resent it.");
   if (locked) return out;
 
   switch (u.kind) {
@@ -562,6 +564,9 @@ export function runCommand(state: GameState, uidOf: string, cmd: string, targetI
       if (state.overrides >= 3) log(state, `${label(u.kind)} ${pick(state, OVERRIDE_LINES)}.`);
       break;
     }
+    case "lock":
+      lockShackles(state, u);
+      break;
     case "unwedge":
       payEnergy(state, RULES.wedgeRemoveEnergy, true);
       u.wedge = 0;

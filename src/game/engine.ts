@@ -50,8 +50,11 @@ import { canPlay, commandsFor, ejectedCommand, playCard, runCommand, tapCommands
 import { captiveOf, dismantleCaptive, gatherCustody, loseCaptive, podUpkeep } from "./capture";
 import { hostiles } from "./pursuit";
 import { openBrawler, openCustody, openPod, openPrisoner, openRecovery, openRelay, openTalk } from "./story";
-import { advanceEpisode, deploy, enterRoom, introduce, pilotByRole, pursuing, radio } from "./team";
+import { advanceEpisode, deploy, enterRoom, introduce, pilotByRole, pursuing, radio, setPilot } from "./team";
 import { CALLSIGN, type Role } from "./team-text";
+import { OUT_OF_FIGHT, buy, crewCount, initRoster, makeFleeing, maxHp, newItem, pilotOp, pilotOpBlock, pilotsFightEnd, pilotsFightStart, pilotsRoomStart, pilotsTurnEnd, pilotsTurnStart, rollShop, spawnFrame } from "./pilots";
+import { crew, openCargo, openFleeing, openMech } from "./pilot-events";
+import { PR } from "./pilots-data";
 import { eventView, openEvent, openHallway, openPatient, openRemembers, openYard, resolveEvent, rollChoice, type Flow } from "./events";
 import { createGame, type Action, type GameState, type Unit } from "./state";
 
@@ -61,6 +64,9 @@ export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, tapCommands
 export { integrityBand, captiveOf, whyNotRestrainable } from "./capture";
 export { teamSummary, pilotRoster, coordination, pursuing } from "./team";
 export { PROX_NAMES, engaged } from "./pursuit";
+export * as P from "./pilots";
+export { PR, ITEMS, SPECS, TRAITS, FRAME_FAULTS } from "./pilots-data";
+import { ITEMS as PILOT_ITEMS } from "./pilots-data";
 export { eventView, type EventView, type Option } from "./events";
 export { living, jubey, enemyHitChance, allies } from "./core";
 
@@ -112,6 +118,7 @@ function startRoom(state: GameState) {
   state.energy = state.energyCap;
   state.nextPack = rollPack(state);
   state.teamEpisode = enterRoom(state);
+  pilotsRoomStart(state);
   state.phase = "route";
   log(state, `— Room ${state.room} path —`);
   if (state.room > RULES.deconEvery) addContamination(state, RULES.contamPerLegRoom, "The deep halls get on the rig.");
@@ -169,7 +176,15 @@ function continueHall(state: GameState) {
       if (state.room >= RULES.prisonerFromRoom && !state.seen.prisoner && chance(state, RULES.prisonerChance)) return openPrisoner(state);
       continue;
     }
-    if (stage === 7) continue;
+    if (stage === 7) {
+      // Pilot encounters: at most one a room.
+      const leg = state.seen;
+      if (!leg.mech && chance(state, PR.mechChance)) return openMech(state);
+      const sender = crew(state).length > 0 || allies(state).some((u) => ["builder", "clampjaw", "robobuddy", "possum"].includes(u.kind));
+      if (!leg.cargo && sender && chance(state, PR.cargoChance)) return openCargo(state);
+      if (state.room >= PR.fleeingFromRoom && (leg.fleeing ?? 0) < 2 && chance(state, PR.fleeingChance)) return openFleeing(state);
+      continue;
+    }
     if (stage === 0) {
       const b = allies(state, "builder").find((x) => !x.temp);
       if (b && !state.seen.droneRemembers && chance(state, RULES.droneRemembersChance)) return openRemembers(state);
@@ -266,6 +281,20 @@ function spawnPack(state: GameState) {
     log(state, `${label(u.kind)} in column ${slot + 1}${m.replacement ? `: ${CALLSIGN[role]}'s pilot, in a replacement frame` : ""}.`);
     if (m.kind === "needleback" && !m.replacement) radio(state, "ep1-contact");
   }
+  // Tracked escapees: they did not get clear.
+  const waiting: string[] = [];
+  for (const id of state.pendingRunners) {
+    const r = state.roster.find((x) => x.id === id);
+    const slot = freeEnemySlot(state);
+    if (!r || r.custody !== "fleeing") continue;
+    if (slot < 0) {
+      waiting.push(id);
+      continue;
+    }
+    spawn(state, "capsule", "enemy", slot, { pilot: r.id, role: r.role ?? "runner", hp: Math.max(1, r.hp), maxHp: Math.max(1, maxHp(r)), exitIn: 2, note: `${r.name}, on foot` });
+    log(state, `Your Tracking Relay leads you straight to ${r.name}, running, in column ${slot + 1}.`);
+  }
+  state.pendingRunners = waiting;
   if (team.length && state.team.knowsPlayer) {
     state.team.knowsPlayer = false;
     state.teamScouted = true;
@@ -313,6 +342,7 @@ function resetFightState(state: GameState) {
   state.badge = { turns: 0, flagged: false, hostile: false };
   state.minesArmed = state.loadoutAd.filter((c) => c === "MINE").length;
   if (state.minesArmed > 0) log(state, `AM Mine deploys itself by the door (${state.minesArmed}).`);
+  pilotsFightStart(state);
   for (const u of state.units) {
     u.intercepted = false;
     u.sorted = 0;
@@ -428,11 +458,13 @@ function beginPlayerTurn(state: GameState) {
   drawCards(state, RULES.handSize - state.hand.length + state.bonusDraw);
   state.bonusDraw = 0;
   planEnemies(state);
+  pilotsTurnStart(state);
   checkClear(state);
 }
 
 /** Runs once when a fight ends: pays out, clears statuses, sends temporary things home. */
 function endFight(state: GameState) {
+  pilotsFightEnd(state);
   if (state.pendingScrap > 0) {
     addScrap(state, state.pendingScrap, "Bonus salvage");
     state.pendingScrap = 0;
@@ -573,6 +605,7 @@ function afterReward(state: GameState) {
 
 function toTech(state: GameState) {
   state.phase = "tech";
+  rollShop(state);
   if (state.intel.cache > 0) addScrap(state, state.intel.cache, "The parts locker your records pointed to");
   else if (state.intel.cache < 0) {
     state.threat += 1;
@@ -635,6 +668,7 @@ function endTurn(state: GameState) {
   if (state.stripped > 0) state.stripped -= 1;
   state.madness = Math.max(0, state.madness - RULES.madnessDecay);
   if (!state.salvagedThisTurn) state.threat = Math.max(0, state.threat - 1);
+  pilotsTurnEnd(state);
   beginPlayerTurn(state);
 }
 
@@ -655,6 +689,7 @@ export function reduce(prev: GameState, action: Action): GameState {
     fresh.best = prev.best ?? 0;
     fresh.lastAction = "start";
     for (const id of STARTING_DECK) addCard(fresh, id);
+    initRoster(fresh);
     fresh.phase = "loadout";
     log(fresh, "Pick one thing to carry in.");
     return fresh;
@@ -738,8 +773,13 @@ export function reduce(prev: GameState, action: Action): GameState {
         break;
       }
       state.contamination = 0;
-      state.seen = { droneRemembers: false, patient: false, yard: false, prisoner: false };
+      state.seen = { droneRemembers: false, patient: false, yard: false, prisoner: false, mech: false, cargo: false, fleeing: 0 };
       log(state, "Gold cleansing light. The ivory comes clean. Then you turn around and go back down.");
+      for (const r of state.roster) {
+        if (r.custody !== "ally" && r.custody !== "captive") continue;
+        r.hp = maxHp(r);
+        r.madness = Math.max(0, r.madness - PR.deconMadness);
+      }
       repair(state, jubey(state), RULES.deconHeal, "Decon");
       toTech(state);
       break;
@@ -813,6 +853,12 @@ export function reduce(prev: GameState, action: Action): GameState {
       else loseCaptive(state, action.holder, "you opened it", true);
       break;
     }
+    case "pilot":
+      pilotOp(state, action.id, action.op, action);
+      break;
+    case "buy":
+      buy(state, action.index);
+      break;
     case "nextRoom":
       if (state.phase === "tech") startRoom(state);
       break;
@@ -825,8 +871,28 @@ export function reduce(prev: GameState, action: Action): GameState {
 
 // ---------- legal actions (UI hints, bot, fuzz test) ----------
 
-export function legalActions(state: GameState): Action[] {
+const ITEMS_ = PILOT_ITEMS;
+
+function pilotActions(state: GameState): Action[] {
   const out: Action[] = [];
+  if (!OUT_OF_FIGHT.includes(state.phase) || !crewCount(state)) return out;
+  const frames = state.units.filter((u) => u.kind === "frame" && u.side === "friendly" && u.hp > 0).map((u) => u.uid);
+  for (const r of state.roster) {
+    const tries: Action[] = [];
+    for (const op of ["talk", "treat", "agree", "recruit", "tighten", "unlock"] as const) tries.push({ type: "pilot", id: r.id, op });
+    for (const stat of ["mental", "skill", "endurance"]) tries.push({ type: "pilot", id: r.id, op: "stat", stat });
+    for (const target of ["", "foot", ...frames]) tries.push({ type: "pilot", id: r.id, op: "assign", target });
+    for (let slot = 0; slot < 4; slot++) {
+      tries.push({ type: "pilot", id: r.id, op: "unequip", slot });
+      for (const it of state.items.slice(0, 4)) tries.push({ type: "pilot", id: r.id, op: "equip", item: it.uid, slot });
+    }
+    for (const a of tries) if (a.type === "pilot" && !pilotOpBlock(state, r, a.op, a)) out.push(a);
+  }
+  return out;
+}
+
+export function legalActions(state: GameState): Action[] {
+  const out: Action[] = pilotActions(state);
   switch (state.phase) {
     case "title":
     case "win":
@@ -888,6 +954,9 @@ export function legalActions(state: GameState): Action[] {
         for (const c of state.deck) if (!c.variant) for (const v of VARIANTS) if (v.card === c.id) out.push({ type: "specialize", uid: c.uid, variant: v.id });
       }
       if (state.equip.servo) out.push({ type: "unequip", what: "servo" });
+      state.shop.forEach((id, i) => {
+        if (id && state.scrap >= ITEMS_[id].price) out.push({ type: "buy", index: i });
+      });
       for (const c of state.captives) {
         out.push({ type: "captive", holder: c.holder, what: "release" });
         if (!c.pilot) out.push({ type: "captive", holder: c.holder, what: "dismantle" });
@@ -960,6 +1029,36 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
         if (kind === "warframe") Object.assign(u, { inert: true, progress: 0 });
       }
       break;
+    case "recruit": {
+      // A Level 1 crew member, as if from a Fleeing Pilot encounter.
+      const r = makeFleeing(state);
+      r.custody = "ally";
+      if (n !== undefined) r.loyalty = n;
+      state.roster.push(r);
+      break;
+    }
+    case "frame": {
+      const [chassis, ...faults] = list.length ? list : ["medium"];
+      spawnFrame(state, chassis as "light", faults, 0);
+      break;
+    }
+    case "item":
+      for (const id of list) state.items.push(newItem(state, id));
+      break;
+    case "parts":
+      state.parts += n ?? 3;
+      break;
+    case "captive": {
+      // Puts an R-8 pilot into a vacant Pod (spawning one if needed), as if captured.
+      const id = s ?? "p-needle";
+      let pod = state.units.find((u) => u.kind === "pod" && u.side === "friendly" && !u.holding);
+      if (!pod) pod = spawn(state, "pod", "friendly", freeFriendSlot(state), { podIntegrity: 100 });
+      state.captives.push({ id: "qa-" + id, kind: "capsule", pilot: id, label: `${CALLSIGN[(state.team.pilots.find((p) => p.id === id)?.role ?? "bishop") as Role]}'s pilot`, holder: pod.uid, bands: 0, tapped: false, hp: 2 });
+      pod.holding = "qa-" + id;
+      introduce(state);
+      setPilot(state, id, "captured");
+      break;
+    }
     case "team":
       // "needleback,bishop" deploys those R-8 mechs into the next qa fight.
       introduce(state);
@@ -973,6 +1072,9 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
       else if (s === "r8-pod") openPod(state);
       else if (s === "r8-talk") openTalk(state);
       else if (s === "patient") openPatient(state);
+      else if (s === "mech") openMech(state);
+      else if (s === "cargo") openCargo(state);
+      else if (s === "fleeing") openFleeing(state);
       else if (s === "yard") openYard(state);
       else if (s === "remembers") openRemembers(state);
       else if (s === "hallway") openHallway(state);

@@ -32,8 +32,25 @@ function checkInvariants(s: GameState) {
   expect(new Set(holders).size, "holder with two captives").toBe(holders.length);
   expect(new Set(s.captives.map((c) => c.id)).size, "captive duplicated").toBe(s.captives.length);
   for (const c of s.captives) expect(s.units.some((u) => u.uid === c.holder && u.holding === c.id), "captive without its holder").toBe(true);
+  // Pilots as people: one record per id, one place at a time.
+  expect(new Set(s.roster.map((r) => r.id)).size, "pilot record duplicated").toBe(s.roster.length);
+  for (const r of s.roster) {
+    expect(r.slots.length).toBe(4);
+    if (!r.slot4) expect(r.slots[3], "item in a locked slot").toBeNull();
+    const equipped = r.slots.filter(Boolean).map((x) => x!.uid);
+    for (const id of equipped) expect(s.items.some((x) => x.uid === id), "item both equipped and in inventory").toBe(false);
+    const fieldUnits = s.units.filter((u) => u.pilot === r.id && u.hp > 0 && (u.kind === "frame" || u.kind === "pilot")).length;
+    expect(fieldUnits, `${r.name} fielded twice`).toBeLessThanOrEqual(1);
+    if (r.custody === "dead" || r.custody === "free") expect(fieldUnits, `${r.custody} pilot ${r.name} in your lane`).toBe(0);
+    expect(r.loyalty >= 0 && r.loyalty <= 100).toBe(true);
+    expect(r.recovering >= 0 && r.madness >= 0 && r.madness <= 100).toBe(true);
+    for (const st of ["mental", "skill", "endurance"] as const) expect(r.base[st] + r.earned[st]).toBeGreaterThanOrEqual(1);
+  }
+  const allItems = [...s.items.map((x) => x.uid), ...s.roster.flatMap((r) => r.slots.filter(Boolean).map((x) => x!.uid))];
+  expect(new Set(allItems).size, "item duplicated").toBe(allItems.length);
+  for (const c of s.captives) if (c.pilot) expect(s.roster.find((r) => r.id === c.pilot)?.custody, "held pilot not marked captive").toBe("captive");
   for (const p of s.team.pilots) {
-    const inUnits = s.units.filter((u) => u.pilot === p.id && u.hp > 0).length;
+    const inUnits = s.units.filter((u) => u.pilot === p.id && u.hp > 0 && u.side === "enemy").length;
     const inCustody = s.captives.filter((c) => c.pilot === p.id).length + s.custody.filter((c) => c.pilot === p.id).length;
     expect(inUnits + inCustody, `pilot ${p.id} in two places`).toBeLessThanOrEqual(1);
     if (p.status === "captured" || p.status === "dead" || p.status === "withdrawn") {
@@ -53,12 +70,21 @@ function loaded(seed: number): GameState {
   s = reduce(s, { type: "qa", cmd: "hand", s: ids.join(",") });
   s.hand = [];
   for (const v of VARIANTS) if (seed % 2) s.deck.find((c) => c.id === v.card && !c.variant)!.variant = v.id;
+  s = reduce(s, { type: "qa", cmd: "recruit", n: 70 });
+  if (seed % 2) s = reduce(s, { type: "qa", cmd: "recruit", n: 50 });
+  s = reduce(s, { type: "qa", cmd: "item", s: "sidearm,medkit,muffle,plockbands,shackles,tracker,scanner,sync" });
+  if (seed % 3 === 0) s = reduce(s, { type: "qa", cmd: "parts", n: 3 });
   s.scrap = 40;
   s.energyCap = 3;
   s.jubeyMax = 25;
   for (const u of s.units) if (u.kind === "jubey") u.hp = u.maxHp = 25;
   return s;
 }
+
+const seen = new Set<string>();
+const played = new Set<string>();
+const endings = new Set<string>();
+const statuses = new Set<string>();
 
 describe("engine", () => {
   it("starts on the loadout screen with the starting deck", () => {
@@ -88,12 +114,9 @@ describe("engine", () => {
     }
   }, 120_000);
 
-  it("random play from a fully loaded start: 250 runs, every state checked, nothing stalls or throws", () => {
-    const seen = new Set<string>();
-    const played = new Set<string>();
-    const endings = new Set<string>();
-    const statuses = new Set<string>();
-    for (let seed = 1; seed <= 250; seed++) {
+  it.each(Array.from({ length: 13 }, (_, i) => 1 + i * 20))("random play from a fully loaded start: 20 runs from seed %i, every state checked", async (from) => {
+    for (let seed = from; seed < from + 20; seed++) {
+      await new Promise((r) => setTimeout(r, 0)); // let the test runner breathe
       let s = loaded(seed);
       let x = seed * 2654435761 >>> 0 || 1;
       const rnd = () => ((x ^= x << 13), (x ^= x >>> 17), (x ^= x << 5), (x >>>= 0), x / 4294967296);
@@ -104,6 +127,7 @@ describe("engine", () => {
         if (s.phase === "player" && rnd() < 0.2) a = { type: "endTurn" };
         if (s.phase === "decon") a = { type: "decon", deeper: rnd() < 0.85 };
         if (a.type === "play") played.add(s.hand.find((c) => c.uid === (a as { uid: string }).uid)!.id);
+        if (a.type === "pilot") played.add("pilot:" + a.op + (a.op === "assign" ? (a.target === "foot" ? ":foot" : a.target ? ":frame" : "") : ""));
         s = reduce(s, a);
         if (s.event) seen.add(s.event.id);
         if (!["active", "disrupted", "dormant"].includes(s.team.pursuit)) endings.add(s.team.pursuit);
@@ -111,11 +135,15 @@ describe("engine", () => {
         checkInvariants(s);
       }
     }
-    for (const id of ["hallway", "hw-maint", "hw-behind", "hw-salvage", "hw-circle", "hw-eats", "patient", "yard", "remembers", "scared", "choice", "custody", "r8-recovery", "r8-brawler", "r8-relay", "r8-talk", "prisoner"]) expect(seen.has(id), `event ${id} never opened`).toBe(true);
+  }, 200_000);
+
+  it("random play reached every event, card, pilot action and ending", () => {
+    for (const id of ["hallway", "hw-maint", "hw-behind", "hw-salvage", "hw-circle", "hw-eats", "patient", "yard", "remembers", "scared", "choice", "custody", "r8-recovery", "r8-brawler", "r8-relay", "r8-talk", "prisoner", "mech", "cargo", "fleeing"]) expect(seen.has(id), `event ${id} never opened`).toBe(true);
     for (const id of REWARD_POOL) expect(played.has(id), `card ${id} never played`).toBe(true);
+    for (const op of ["equip", "unequip", "assign:foot", "assign:frame", "talk", "treat", "stat", "unlock"]) expect(played.has("pilot:" + op), `pilot op ${op} never used`).toBe(true);
     expect(endings.size, "no run ever ended the pursuit").toBeGreaterThanOrEqual(1);
     expect(statuses.has("dead") && (statuses.has("escaped") || statuses.has("withdrawn")), `pilot outcomes seen: ${[...statuses].join(", ")}`).toBe(true);
-  }, 240_000);
+  });
 
   it("a save made mid-event or mid-fight reloads to the same future", () => {
     for (let seed = 1; seed <= 40; seed++) {

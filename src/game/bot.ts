@@ -47,6 +47,9 @@ const SAFE: Record<string, string[]> = {
   "r8-pod": ["ground", "walker", "track"],
   "r8-talk": ["call", "exchange", "codes"],
   prisoner: ["leave"],
+  mech: ["inspect", "salvage"],
+  cargo: ["below", "leave"],
+  fleeing: ["ask", "shelter"],
 };
 const BOLD: Record<string, string[]> = {
   scared: ["accept", "leave"],
@@ -67,6 +70,9 @@ const BOLD: Record<string, string[]> = {
   "r8-pod": ["ground", "walker", "pursue"],
   "r8-talk": ["call", "exchange", "come"],
   prisoner: ["band", "tap", "strip", "leave"],
+  mech: ["inspect", "repair", "take", "salvage"],
+  cargo: ["below", "drone", "leave"],
+  fleeing: ["ask", "help", "shelter"],
 };
 
 function incoming(s: GameState): number {
@@ -197,6 +203,16 @@ export function botMove(s: GameState, style: BotStyle): Action {
     case "decon":
       return { type: "decon", deeper: s.tally.decons + 1 < style.legs && !!j && j.hp >= 3 };
     case "tech": {
+      // Put willing crew to work: an empty frame first, otherwise on foot.
+      if (style.machines) {
+        const frame = s.units.find((u) => u.kind === "frame" && u.side === "friendly" && !u.pilot);
+        for (const r of s.roster) {
+          if (r.custody !== "ally" || r.assignment || r.away) continue;
+          const target = frame ? frame.uid : "foot";
+          const a: Action = { type: "pilot", id: r.id, op: "assign", target };
+          if (legalActions(s).some((x) => JSON.stringify(x) === JSON.stringify(a))) return a;
+        }
+      }
       if (j && j.hp < j.maxHp && s.cash >= RULES.repairCash) return { type: "repair" };
       if (j && j.hp <= j.maxHp - 2 && s.scrap >= RULES.patchScrap) return { type: "patch" };
       const en = ENERGY_UP.find((e) => e.from === s.energyCap);

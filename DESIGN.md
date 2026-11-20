@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.4)
+# Mechanica Descent — build notes (v0.5)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -17,7 +17,27 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/game/team.ts` | Relay Section R-8's persistent state: pilots, coordination, replacements, pursuit endings |
 | `src/game/story.ts` | Custody, the R-8 episodes and negotiation, The Prisoner That Repairs Itself |
 | `src/game/team-text.ts` | R-8 radio dialogue (verbatim from the brief) and the Prisoner's screen tells |
-| `src/game/tests/` | 190 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/pilots-data.ts` | Pilot items, specializations, personalities, frame faults, every pilot tuning value (`PR`) |
+| `src/game/pilots.ts` | Pilot records, stats, levels, equipment, loyalty, custody strain, assignments, pilots in fights |
+| `src/game/pilot-events.ts` | Empty-Cockpit Mech, Suspicious Cargo Above, Fleeing Pilot |
+| `src/Crew.tsx` | The crew panel: roster, equipment screen, stats, loyalty, assignment barrier |
+| `src/game/tests/` | 260 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.5 adds
+
+Brief 5: pilot equipment, progression, loyalty and three choice encounters.
+
+- **Pilots are people.** Each has one record with a stable id: the same Needleback is the enemy pilot, the captive, the runner, and the crew member. The five R-8 pilots exist from the start with their own levels, specialties and gear.
+- **Equipment.** Three slots, plus a fourth unlocked per pilot with 3 Cockpit Parts. Captives take gags, restraints and relays; crew take weapons, modules and support items. Capture confiscates crew gear; joining the crew hands captive gear back. Items move, never duplicate.
+- **Cockpit Parts.** A 20% roll once per cockpit source: each anonymous piloted wreck, and each R-8 pilot once, however often they are recaptured.
+- **Stats and levels.** Mental, Skill and Endurance rolled from the level table. XP from sorties, kills and safe inspections; each level adds a point and raises the stat cap. Nothing is ever rerolled or lowered.
+- **Stat effects** use the brief's formulas and caps. Combined Mental and Endurance prevention stops at one point per hit.
+- **Loyalty.** Five bands. Hostile and Unwilling pilots sit behind the orange-red barrier for assignments, but custody and equipment stay manageable. Partially Willing pilots show generalized expectations. Every restricted pilot gets an estimate or a named blocker. The betrayal roll stays hidden.
+- **Assignments.** On foot (personal weapon) or in a salvaged frame (the frame's weapon). Captives in the field may bolt: telegraphed the turn before, and stoppable with Remote Release Shackles.
+- **Custody over time.** Captives build escape strain each room; restraints slow it and relays show it. R-8 captives may ping their section through a suit transmitter, which gags do not stop, and shout to it when it is in the room, which gags do.
+- **Encounters.** Empty-Cockpit Mech (25% damaged), Suspicious Cargo Above (15% toxic gas), Fleeing Pilot (Level 1 recruit; 80% start with 10–20% fading Madness).
+- **Quartermaster crate.** Each Tech Stop offers three pilot items for Scrap.
+- **Crew panel.** Opened from the "crew" button in the header.
 
 ## What v0.4 adds
 
@@ -97,6 +117,19 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 | Wrong Hallway trigger | The card arms it for the current room. Rooms also go wrong on their own 8% of the time. |
 | Neutral maintenance machines | They exist in events. In fights the Faulty Access Badge applies to Drones only: they hold fire for 2 turns, then one check. |
 | Enemy complications (brief 2 §12.5) | Mapped onto existing enemies: Drones scavenge wrecks, jam Builders and cut Leeches off; Lights go for an inert Warframe; Level 2s and Zombies prioritize an active Warframe and shake off Gun Nests. No new enemy units. |
+| Commandeered Cockpit (brief 5 dependency) | Not in the game before this. The equivalent: salvaged frames (from the Empty-Cockpit Mech) that any eligible pilot can be assigned to, plus a hidden per-sortie betrayal roll for captives. |
+| Dismounted pilots | "On foot" is an assignment: the pilot appears on your lane for each fight as a small unit with their own HP and personal weapon. Guns do nothing inside a frame. |
+| Pilot Madness | Its own 0–100 scale per pilot, separate from your Madness meter. Effect: the chance a pilot freezes for a turn, reduced by Mental. +5% per Nightmare fight; Decon takes off 10. |
+| Nightmare encounters | Fights with the Riflemen card, Wrong Hallway extension fights, and fights with the Prisoner. |
+| Where stats apply | Endurance and Mental protect the pilot's own body: on foot, in toxic gas, and when their frame is destroyed. A frame takes its own damage. Skill and Madness apply both ways. |
+| Specializations | Scout and Technician add Skill to inspection and technical checks. Assault adds damage. Recovery repairs its frame and is always found after ejecting. Heavy flies heavy frames. Command sharpens your machines. Untrained frame class: −2 Skill. Each improves at level 5. |
+| Captive assignments | Partially Willing captives: on foot and ladders only. Cooperative captives: frames too. Assigned captives still count against their holder's one-captive limit. |
+| Betrayal | Hidden chance per sortie by band and personality. More likely in a light frame or with their old section present; less with Remote Release Shackles, a Tracking Relay, or Panic Jack guarding them. A bolting pilot in a light frame takes the frame; otherwise they become a runner you can still catch. |
+| Loyalty gains | Talking (once a room, gag off), treating injuries, an agreement not to field them against their section (broken if you do), and sorties. Time alone raises nothing. Harsh gear costs loyalty each room. |
+| Blockers | Bishop: while any other R-8 pilot is still out there. Kilnheart (defiant): until treated. All R-8 captives warm up at 75% speed while the hunt is on. |
+| Captive escape | Escape strain per room by band, less restraints and a Pod. At 100 they slip custody; with a Tracking Relay they turn up running in your next fight. No relay: "RESTLESS" from 70 is the only warning. |
+| Gags and radios | Gags block speech: shouting to a section in the room. They never block the suit transmitter, which only a Local Signal Isolator stops and a Communication Monitor reports. |
+| Pilot gear sources | R-8 pilots' confiscated kit, the Quartermaster crate at Tech Stops, Suspicious Cargo, and some fleeing pilots. |
 | Capture eligibility (brief 3) | Small and medium machines at 3 HP or less, or disabled (stunned, foamed, sealed). Heavy frames (Level 2, Zombie, Kilnheart, Patient, Relay) are refused, and the unit sheet says so. |
 | "Consumes a player action" | Playing the card is the action. Lockbands and Wedge cost Scrap, not Energy. |
 | Fight end with captives | A fight ends when every enemy left is secured. Capsules on the field keep it going until they leave or are dealt with. |
@@ -131,6 +164,12 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 
 ## Not done, or thinner than the brief
 
+- **Pilot portraits**: initials in a box. No art.
+- **Commandeered Cockpit as its own system**: built only as far as frames and betrayal; there is no taking over an enemy mech mid-fight.
+- **Personal combat beyond one attack**: on-foot pilots shoot; they do not dodge, take cover or carry items in the field.
+- **Relays as separate damageable equipment**: relays only report; they cannot be damaged.
+- **Loyalty from "fulfilled agreements" beyond the one agreement**: no other agreement types.
+- **Scrap Shepherd recovering frames, Panic Jack guarding a pilot on foot, Unfinished Warframe piloting**: Jack can guard a frame or pilot unit (it deters bolting); the other two are not wired to pilots.
 - **Sound**: none. Every audio cue in the briefs is a bracketed caption instead.
 - **Distinct ejection animations**: each chassis has its own ejection text and capsule behavior. There is no per-chassis animation.
 - **Clampjaw commands**: Apprehend, Transfer and Release exist. Reinforce is automatic while it holds. Hold and Retreat have no positions to mean anything.
@@ -152,24 +191,23 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 
 ## Balance, as measured
 
-`npm run sim` plays 1,200 runs per row with a simple heuristic bot. The bot does not capture anyone and barely uses machines.
+`npm run sim` plays 1,200 runs per row with a simple heuristic bot. It takes in fleeing pilots and fields them, but never captures anyone and never equips or talks.
 
-| Bot | Past room 2 | Reached first Decon | Walked out clean |
-| --- | --- | --- | --- |
-| Careful, Shabby Lootbox | 72% | 56% | 56% |
-| Careful, AM Mine | 81% | 63% | 63% |
-| Careful, Lil Robobuddy | 73% | 63% | 63% |
-| Careful, old cards only | 71% | 59% | 59% |
-| Greedy (red hall, strips everything) | 86% | 70% | 70% |
-| Careful, goes deeper once | 73% | 63% | 38% |
-| Greedy, goes deeper twice | 86% | 70% | 46% |
+| Bot | Past room 2 | Reached first Decon | v0.4 | Walked out clean |
+| --- | --- | --- | --- | --- |
+| Careful, Shabby Lootbox | 73% | 61% | 56% | 61% |
+| Careful, AM Mine | 83% | 68% | 63% | 68% |
+| Careful, Lil Robobuddy | 75% | 66% | 63% | 66% |
+| Careful, old cards only | 74% | 64% | 59% | 64% |
+| Greedy (red hall, strips everything) | 88% | 71% | 70% | 71% |
+| Careful, goes deeper once | 75% | 66% | 63% | 41% |
+| Greedy, goes deeper twice | 88% | 71% | 70% | 49% |
 
 What that says:
 
-- **The first leg got about 10 points easier than v0.3.** Melee closing gives you a free turn against the Infested, which was the main killer in rooms 1 and 2.
-- **The second leg got harder**: about 6 in 10 bots that go deeper once come back, down from 7 in 10. That is R-8 arriving in force.
-- **The bot kills pilots; it never captures them.** Across all rows it captured a pilot in well under 1% of runs, so capture, custody, negotiation and the nonlethal endings are verified by tests and by hand, not by the sim.
-- Greedy still beats careful.
+- **Every row is about 3–5 points easier** than v0.4. The new encounters hand out Scrap, items and the odd frame, and none of them is dangerous for a careful bot.
+- **Crew stays small**: the bot ends a run with 0.2 crew on average. Fleeing pilots are rare (10% a room from room 2).
+- **The bot never captures, equips or talks**, so loyalty, custody and equipment are covered by tests and by hand, not by the sim.
 
 ## Open questions carried over
 
@@ -218,3 +256,12 @@ The two briefs are stored verbatim:
 
 - `docs/briefs/03-capture-containment-and-the-self-repairing-prisoner.txt`
 - `docs/briefs/04-ejectable-mechs-melee-closing-and-the-pursuit-team.txt`
+
+**Prompt 7 (2026-11-20)**, with one attached brief
+
+> @"/mnt/user-data/uploads/1e8b0417-attachment.txt" Push later when there’s more updates.
+> Pilot units and mechanics update
+
+"Push later when there's more updates" answers the question asked after Prompt 6: v0.4 and v0.5 stay local until a later update.
+
+- `docs/briefs/05-pilot-equipment-progression-loyalty-and-choice-encounters.txt`

@@ -1,7 +1,7 @@
 import type { CustodyItem } from "./capture";
 import { RULES, type CardId, type ChoiceId, type Phase, type Side, type UnitKind } from "./data";
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface Leech {
   cardUid?: string; // absent for temporary leeches
@@ -16,10 +16,12 @@ export interface Leech {
 export interface Plan {
   type:
     | "attack" | "missile" | "purge" | "tear" | "removeLeech" | "scavenge" | "jam" | "shake" | "break" | "hold" | "disabled"
-    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate";
+    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate" | "reload";
   targetUid?: string;
   dmg?: number;
   note?: string;
+  /** A Laser Sight is painting the target. Shown even before the sight is identified. */
+  laser?: boolean;
 }
 
 export interface Unit {
@@ -115,6 +117,15 @@ export interface Unit {
   // clampjaw
   apprehend?: string; // ordered target
   holding?: string; // captive id carried between fights
+  // enemy equipment and magazine
+  gear?: EnemyGear[];
+  gearRolled?: boolean;
+  ammo?: number;
+  shots?: number; // shots since the last reload
+  // escape pods
+  occupant?: "unresolved" | "empty";
+  reserved?: string; // the pilot id an anonymous pod's occupant will get, if anyone is inside
+  stalkerId?: string;
   // frame
   chassis?: string;
   faults?: string[];
@@ -165,8 +176,16 @@ export interface PilotRec {
   role?: string; // R-8 chassis role
   level: number;
   xp: number;
-  base: { mental: number; skill: number; endurance: number };
-  earned: { mental: number; skill: number; endurance: number };
+  base: { mental: number; skill: number; endurance: number; observation: number };
+  earned: { mental: number; skill: number; endurance: number; observation: number };
+  /** Cockpit Part source key for a pilot who came out of an anonymous cockpit. */
+  partsKey?: string;
+  /** The stalker this pilot drives, if any. */
+  stalker?: string;
+  /** The mech this pilot came out of: they are qualified for its class. */
+  eligible?: UnitKind;
+  /** Rooms before they can take a frame (out of a pod hurt). */
+  rest?: number;
   points: number;
   hp: number;
   madness: number; // 0-100
@@ -217,6 +236,59 @@ export interface Team {
   ending: string;
 }
 
+export interface EnemyGear {
+  uid: string;
+  id: "missilepod" | "extmag" | "laser";
+  seen: boolean; // identified by Observation before it acted
+  revealed: boolean; // identified, either way
+  checked: boolean; // the encounter-start Observation roll has been made
+  last: number; // turn it last fired (missile pod), so it cannot fire twice in one turn
+  rechecked: boolean; // a scouting action has given it a second roll
+  cd: number; // missile pod cooldown
+}
+
+/** An escape pod left on the field when the shooting stopped. */
+export interface PodRec {
+  id: string;
+  origin: UnitKind; // the mech it came out of
+  pilot?: string; // a known person, or the pilot generated when it was opened
+  occupant: "named" | "unresolved" | "empty";
+  outcome?: "cooperative" | "frightened" | "hostile" | "incapacitated" | "empty";
+  hp: number;
+  maxHp: number;
+  srcKey: string; // Cockpit Part source shared with its wreck
+  opened: boolean;
+  subdued: boolean;
+  helped: boolean;
+  asked: boolean; // questioned
+  tried: boolean; // asked to join
+  resolved: boolean;
+  secured: boolean; // was restrained on the field
+}
+
+export type StalkerState = "hunting" | "approaching" | "intercepting" | "engaged" | "defeated";
+
+export interface Stalker {
+  id: string;
+  kind: UnitKind; // hunter | tracker | predator | nightmare
+  level: number;
+  rating: number;
+  spawnedAt: number;
+  state: StalkerState;
+  distance: number; // rooms away
+  door: "normal" | "risky" | ""; // where it waits when intercepting
+  pilot?: string;
+  gear: EnemyGear["id"][];
+  seen: boolean;
+  fought: boolean;
+  refits: number;
+  lastSnippet: number;
+  frameDown: boolean; // its machine was destroyed in the current engagement
+  misses: number; // times the player picked the other door
+  reduction?: number;
+  aftermath: boolean;
+}
+
 export interface Wreck {
   id: string;
   kind: UnitKind;
@@ -227,6 +299,8 @@ export interface Wreck {
   pile?: boolean;
   /** Cockpit Part source key, when it differs from the wreck id. */
   src?: string;
+  /** An R-8 frame its pilot ejected from: intact enough to claim. */
+  abandoned?: string; // chassis class
 }
 
 export interface CardInst {
@@ -308,6 +382,15 @@ export interface GameState {
   nightmareFight: boolean;
   /** Tracked escapees who turn up running in the next fight. */
   pendingRunners: string[];
+  pods: PodRec[];
+  buddy: { status: "none" | "active" | "wrecked"; penalty: boolean; rebuilt: number; deaths: number };
+  stalkers: Stalker[];
+  pendingStalker: string | null;
+  routeSnippets: string[];
+  /** Results the player should see wherever they are next: dismissed with a tap. */
+  notices: { title: string; lines: string[] }[];
+  /** A costly second look for hidden enemy equipment, once per fight. */
+  scanned: boolean;
   /** Pilots alive inside wedged wrecks, waiting for someone to cut them out. */
   pinned: { pilot: string; role: UnitKind }[];
   /** Restrained enemies to deal with now that the fight is over. */
@@ -387,6 +470,8 @@ export type Action =
   | { type: "captive"; holder: string; what: "release" | "dismantle" }
   | { type: "pilot"; id: string; op: PilotOp; item?: string; slot?: number; stat?: string; target?: string }
   | { type: "buy"; index: number }
+  | { type: "scan" }
+  | { type: "dismiss" }
   | { type: "nextRoom" }
   | { type: "qa"; cmd: string; n?: number; s?: string };
 
@@ -470,6 +555,13 @@ export function createGame(seed = 1): GameState {
     shop: [],
     nightmareFight: false,
     pendingRunners: [],
+    pods: [],
+    buddy: { status: "none", penalty: false, rebuilt: 0, deaths: 0 },
+    stalkers: [],
+    pendingStalker: null,
+    routeSnippets: [],
+    notices: [],
+    scanned: false,
     pinned: [],
     custody: [],
     tap: null,

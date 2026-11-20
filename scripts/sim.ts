@@ -17,6 +17,7 @@ const styles: [string, BotStyle][] = [
 const pct = (n: number) => ((100 * n) / N).toFixed(1) + "%";
 for (const [name, style] of styles) {
   let out = 0, first = 0, depth = 0, r12 = 0, scrap = 0, machines = 0, met = 0, crew = 0, lost = 0;
+  let stalked = 0, killedStalker = 0, buddyDown = 0, rebuilt = 0, podPilots = 0, peakThreat = 0;
   const ends: Record<string, number> = {};
   const fates: Record<string, number> = {};
   for (let i = 1; i <= N; i++) {
@@ -32,6 +33,12 @@ for (const [name, style] of styles) {
     ends[f.team.pursuit] = (ends[f.team.pursuit] ?? 0) + 1;
     for (const p of f.team.pilots) fates[p.status] = (fates[p.status] ?? 0) + 1;
     scrap += f.tally.salvaged;
+    if (f.stalkers.length) stalked++;
+    killedStalker += f.stalkers.filter((x) => x.state === "defeated").length;
+    buddyDown += f.buddy.deaths;
+    rebuilt += f.buddy.rebuilt;
+    podPilots += f.roster.filter((x) => x.id.startsWith("p-a")).length;
+    peakThreat += f.threat;
     machines += f.deck.filter((c) => ["BUILDER", "JACK", "SHEPHERD", "WALKER", "POSSUM", "WARFRAME"].includes(c.id)).length;
   }
   console.log(`\n${name}`);
@@ -40,4 +47,6 @@ for (const [name, style] of styles) {
   console.log(`  pilots per run: ${Object.entries(fates).map(([k, v]) => `${k} ${(v / N).toFixed(2)}`).join(", ")}`);
   console.log(`  crew at end/run ${(crew / N).toFixed(2)}   recruits lost/run ${(lost / N).toFixed(2)}`);
   console.log(`  wrecks stripped/run ${(scrap / N).toFixed(2)}   machine cards in deck at end ${(machines / N).toFixed(2)}`);
+  console.log(`  stalked ${pct(stalked)}   stalkers eliminated/run ${(killedStalker / N).toFixed(2)}   pod pilots met/run ${(podPilots / N).toFixed(2)}   Threat at end ${(peakThreat / N).toFixed(1)}`);
+  console.log(`  Robobuddy downed/run ${(buddyDown / N).toFixed(2)}   rebuilt/run ${(rebuilt / N).toFixed(2)}`);
 }

@@ -5,6 +5,7 @@
 import { RULES, UNITS, label } from "./data";
 import { addWreck, attackPlan, chance, deal, freeEnemySlot, is, living, log, pick, spawn, toDiscard, unit } from "./core";
 import { secured, struggle } from "./capture";
+import { chassisFor } from "./recovery";
 import type { GameState, Plan, Unit } from "./state";
 import { bishopCommanding, coordination, ejectAt, pursuing, radio, say, setPilot } from "./team";
 import { WEDGED_DISTRESS, type Role } from "./team-text";
@@ -15,9 +16,12 @@ export const PROX_NAMES = ["DISTANT", "CLOSING", "MELEE READY"];
 export function fighters(state: GameState): Unit[] {
   return living(state, "enemy").filter((u) => !secured(u) && u.kind !== "capsule");
 }
-/** Enemies that keep a fight going. A capsule on the field is unfinished business. */
+/**
+ * Enemies that keep a fight going. A flying pod or a running pilot is still
+ * getting away; a pod sitting on the floor waits for the recovery screen.
+ */
 export function hostiles(state: GameState): Unit[] {
-  return living(state, "enemy").filter((u) => !secured(u));
+  return living(state, "enemy").filter((u) => !secured(u) && !(u.kind === "capsule" && !u.flying && u.role !== "runner"));
 }
 export function engaged(u: Unit): boolean {
   return (u.prox ?? 0) >= RULES.proxEngaged;
@@ -128,8 +132,8 @@ function launch(state: GameState, u: Unit) {
   // A Critical Kilnheart goes up behind the rocket; the capsule is already clear of it.
   if (critical) explode(state, u, false);
   else {
-    addWreck(state, { kind: u.kind, side: "enemy", value: 2, src: "pilot:" + pilotId });
-    log(state, "The abandoned frame is yours to strip.");
+    addWreck(state, { kind: u.kind, side: "enemy", value: 2, src: "pilot:" + pilotId, abandoned: chassisFor(u.kind) });
+    log(state, "The abandoned frame is yours to strip, or to claim after the fight.");
   }
   spawn(state, "capsule", "enemy", slot, {
     pilot: pilotId,

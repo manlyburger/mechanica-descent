@@ -21,6 +21,14 @@ import { clampLost, clampjawAct, loseCaptive } from "./capture";
 import { actSpecial, engaged, fighters, onDamaged, onEnemyKilled, planSpecial, teamOrders } from "./pursuit";
 import { PILOTED, avoidDeath, commandBonus, creditKill, footAct, frameAct, frameLost, pilotDefense, rec as pilotRec, rollParts, setAwayCaptive } from "./pilots";
 import { setPilot } from "./team";
+import { has as hasGear, laserBonus, missilePod, reload, salvageGear, spendRound } from "./gear";
+import { anonEject, buddyDown } from "./recovery";
+import { onStalkerKilled } from "./stalkers";
+
+/** Scrap a wreck of this kind holds. */
+export function wreckValue(kind: UnitKind): number {
+  return RULES.wreckValue[kind] ?? 1;
+}
 
 // ---------- RNG, log ----------
 
@@ -118,6 +126,7 @@ export function spawn(state: GameState, kind: UnitKind, side: Side, slot: number
     ...extra,
   };
   state.units.push(u);
+  if (kind === "robobuddy" && side === "friendly") state.buddy.status = "active";
   return u;
 }
 
@@ -402,6 +411,7 @@ export function kill(state: GameState, u: Unit, killerUid?: string) {
 function killEnemy(state: GameState, u: Unit) {
   state.tally.kills += 1;
   const noWreck = onEnemyKilled(state, u) || u.kind === "capsule";
+  onStalkerKilled(state, u);
   state.lastKilled = u.kind === "patient" ? state.lastKilled : u.kind;
   if (u.kind === "infested") {
     log(state, "Infested wreck gives nothing.");
@@ -418,7 +428,9 @@ function killEnemy(state: GameState, u: Unit) {
     }
     if (!u.temp) rollWeaponFinds(state, u);
   }
-  if (leavesWreck(u.kind) && !u.temp && !noWreck) addWreck(state, { kind: u.kind, side: "enemy", value: 1 });
+  const reserved = !u.temp && !noWreck ? anonEject(state, u) : undefined;
+  if (!u.temp) salvageGear(state, u);
+  if (leavesWreck(u.kind) && !u.temp && !noWreck) addWreck(state, { kind: u.kind, side: "enemy", value: wreckValue(u.kind), src: reserved ? "pilot:" + reserved : undefined });
 
   // Machine Possum: one pull per corpse, capped per encounter.
   for (const p of allies(state, "possum")) {
@@ -483,7 +495,8 @@ function killFriendly(state: GameState, u: Unit, killerUid?: string) {
       log(state, "Cargo spill: the Shepherd's unfinished haul lies in the open.");
     }
   }
-  const w = u.temp ? undefined : addWreck(state, { kind: u.kind, side: "friendly", value: 1, free: u.kind === "builder" });
+  if (u.kind === "robobuddy") buddyDown(state);
+  const w = u.temp || u.kind === "robobuddy" ? undefined : addWreck(state, { kind: u.kind, side: "friendly", value: 1, free: u.kind === "builder" });
   if (u.kind === "builder" && w) log(state, "Last Useful Act: the drone leaves 1 Scrap in its wreck.");
 
   if (u.kind === "walker" && u.elevated) {
@@ -544,33 +557,64 @@ export function enemyHitChance(state: GameState, u?: Unit): number {
   const steps = state.accModEnemy + (u?.accMod ?? 0);
   if (steps > 0) for (let i = 0; i < steps; i++) miss *= 0.5;
   else for (let i = 0; i < -steps; i++) miss = Math.min(1, miss * 2);
-  return 1 - miss;
+  const base = 1 - miss;
+  const sight = laserBonus(u);
+  // The sight works inside the existing limits: it never lifts a shot past the cap.
+  return sight > 0 ? Math.max(base, Math.min(RULES.hitCap, base + sight)) : base;
 }
 
-function targetable(state: GameState, attacker: Unit): Unit[] {
-  const melee = is(attacker, "melee");
+/** One enemy's turn: its action, then anything bolted on that fires by itself. */
+export function enemyTurn(state: GameState, u: Unit) {
+  const free = !(u.stunned > 0 || u.foam || (u.sealed ?? 0) > 0 || (u.pacified ?? 0) > 0 || u.cap);
+  enemyAct(state, u);
+  if (free && state.phase === "player") missilePod(state, u, (x) => pickTarget(state, x, true), enemyHitChance(state, u));
+}
+
+/** Legal targets. A melee weapon cannot reach anything overhead; a missile can. */
+function targetable(state: GameState, attacker: Unit, ranged = false): Unit[] {
+  const melee = !ranged && is(attacker, "melee");
   return living(state, "friendly").filter((f) => !f.foam && !f.shutdown && !(melee && f.elevated));
 }
 function nearest(list: Unit[], slot: number): Unit | undefined {
   return list.slice().sort((a, b) => Math.abs(a.slot - slot) - Math.abs(b.slot - slot) || a.slot - b.slot)[0];
 }
 
-export function pickTarget(state: GameState, u: Unit): Unit | undefined {
-  const c = targetable(state, u);
-  if (!c.length) return undefined;
-  const beacon = c.find((f) => f.kind === "beacon");
-  if (beacon) return beacon;
+/** The quarter of the time an enemy actually thinks about who to shoot. */
+function tacticalTarget(state: GameState, u: Unit, c: Unit[]): Unit {
   const j = c.find((f) => f.kind === "jubey");
   if (u.kind === "infested") {
     const hunt = state.threat >= RULES.threatHunt || state.contamination >= RULES.contamHunt;
-    return (hunt ? j : undefined) ?? nearest(c, u.slot);
+    return (hunt ? j : undefined) ?? nearest(c, u.slot)!;
   }
   if (u.kind === "lvl2" || u.kind === "zombie" || u.kind === "patient") {
     const wf = c.find((f) => f.kind === "warframe" && !f.inert);
-    return wf ?? j ?? nearest(c, u.slot);
+    if (wf) return wf;
   }
-  if (u.kind === "light") return j ?? nearest(c, u.slot);
-  return nearest(c, u.slot);
+  if (u.kind === "predator") {
+    const machines = c.filter((f) => is(f, "machine"));
+    if (machines.length) return machines.sort((a, b) => a.hp - b.hp)[0];
+  }
+  if (u.kind === "nightmare") {
+    const people = c.filter((f) => f.kind === "pilot" || (f.kind === "frame" && !!f.pilot));
+    if (people.length) return nearest(people, u.slot)!;
+  }
+  // Finish the most wounded thing it can reach. Jubey only when Jubey is the one hurting.
+  return c.slice().sort((a, b) => a.hp - b.hp || Math.abs(a.slot - u.slot) - Math.abs(b.slot - u.slot))[0];
+}
+
+/**
+ * Most of the time a uniformly random legal target; the rest, a tactical pick.
+ * The decoy beacon is an explicit rule and always wins. Scripted orders (the
+ * Brawler's guard, Bishop's mark, the saboteur run) are applied by their own
+ * planners on top of this.
+ */
+export function pickTarget(state: GameState, u: Unit, ranged = false): Unit | undefined {
+  const c = targetable(state, u, ranged);
+  if (!c.length) return undefined;
+  const beacon = c.find((f) => f.kind === "beacon");
+  if (beacon) return beacon;
+  if (chance(state, RULES.randomTarget)) return pick(state, c);
+  return tacticalTarget(state, u, c);
 }
 
 export function attackPlan(state: GameState, u: Unit, target?: Unit): Plan {
@@ -581,6 +625,11 @@ export function attackPlan(state: GameState, u: Unit, target?: Unit): Plan {
 
 export function planEnemy(state: GameState, u: Unit): Plan {
   if (u.foam || u.stunned > 0) return { type: "disabled" };
+  const p = planEnemyCore(state, u);
+  if (p.type === "attack" && hasGear(u, "laser")) p.laser = true;
+  return p;
+}
+function planEnemyCore(state: GameState, u: Unit): Plan {
   if ((u.sealed ?? 0) > 0) return u.kind === "zombie" ? { type: "break", note: "breaking the seal" } : { type: "disabled" };
   if ((u.pacified ?? 0) > 0) return { type: "hold", note: "badge accepted" };
   const special = planSpecial(state, u);
@@ -604,6 +653,9 @@ export function planEnemy(state: GameState, u: Unit): Plan {
     const wf = allies(state, "warframe").find((w) => w.inert && !w.foam);
     if (wf && chance(state, RULES.saboteur)) return { ...attackPlan(state, u, wf), note: "going for the startup rig" };
   }
+  if (u.kind === "predator" && state.wrecks.length && chance(state, 0.35)) return { type: "scavenge", note: "tearing into the wreckage" };
+  // An empty magazine means a turn spent reloading, telegraphed like anything else.
+  if (u.ammo === 0 && !(is(u, "melee") && !engaged(u))) return { type: "reload", note: "RELOADING" };
   return attackPlan(state, u);
 }
 
@@ -737,6 +789,12 @@ export function enemyAct(state: GameState, u: Unit) {
       }
       break;
     }
+    case "reload":
+      if (u.ammo !== undefined) {
+        reload(state, u);
+        return;
+      }
+      break;
     default:
       break;
   }
@@ -767,7 +825,7 @@ export function enemyAct(state: GameState, u: Unit) {
   if (missile) {
     u.lock = 0;
     u.missiles -= 1;
-  }
+  } else if (!is(u, "melee")) spendRound(state, u);
   const marked = state.teamMark && is(u, "team") && u.kind !== "needleback";
   if (marked) {
     state.teamMark = false;
@@ -781,6 +839,10 @@ export function enemyAct(state: GameState, u: Unit) {
   const base = missile ? (u.kind === "lvl2" ? 6 : 3) : u.atk;
   const done = deal(state, final, crazyDmg(base, u.crazy, state), missile ? `${name} missile` : name, { attackerUid: u.uid });
   if (u.kind === "infested" && final.kind === "jubey" && done > 0) addContamination(state, RULES.contamPerInfestedHit, "The Infested leaves something on the rig.");
+  if (u.kind === "nightmare" && done > 0) {
+    state.madness += 1;
+    log(state, "The Nightmare Stalker's frame is wrong to look at. +1 Madness.");
+  }
   if (missile && final.hp > 0 && done > 0 && chance(state, 0.5)) {
     final.burn = Math.max(final.burn, 2);
     log(state, `${label(final.kind)} ignited.`);

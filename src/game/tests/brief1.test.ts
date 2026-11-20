@@ -380,6 +380,7 @@ describe("other brief-1 cards", () => {
     expect(s.scrap).toBe(scrap);
     s = qa(s, "hand", undefined, "SLUG,SLUG");
     foe(s).hp = 5;
+    s.madness = 0; // the riflemen's Madness could make the Slug misfire
     s = play(s, "SLUG", foe(s));
     expect(s.scrap).toBe(scrap + RULES.possumCap);
   });

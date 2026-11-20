@@ -94,7 +94,7 @@ export const PR = {
   shopSize: 3,
 };
 
-export type Stat = "mental" | "skill" | "endurance";
+export type Stat = "mental" | "skill" | "endurance" | "observation";
 export type Spec = "Scout" | "Assault" | "Recovery" | "Heavy" | "Command" | "Technician";
 export type Chassis = "light" | "medium" | "heavy";
 

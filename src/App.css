@@ -307,3 +307,74 @@ h2 { font-size: 17px; font-weight: 600; margin: 0 0 8px; letter-spacing: 0.03em;
 .barrier small { font-weight: 400; letter-spacing: 0; opacity: 0.85; }
 .explain { border: 1px solid #e8602e; background: #24130c; padding: 8px; margin-top: 6px; }
 .crewsec { margin-top: 10px; }
+
+/* ---- v0.6: stalker snippets, notices, enemy equipment ---- */
+.snippet {
+  color: #ffb066;
+  border-left: 3px solid #ff8a1f;
+  padding: 4px 0 4px 10px;
+  margin: 6px 0;
+  font-style: italic;
+  line-height: 1.35;
+}
+.panel.notice {
+  border: 1px solid #ff8a1f;
+  background: #2a1708;
+}
+.panel.notice h2 {
+  color: #ffb066;
+  letter-spacing: 0.08em;
+}
+.panel.notice p {
+  margin: 4px 0;
+}
+.endrow {
+  display: flex;
+  gap: 8px;
+}
+.endrow .btn {
+  width: auto;
+  min-width: 0;
+}
+.endrow .endturn {
+  flex: 1 1 60%;
+}
+.endrow .scan {
+  flex: 0 0 34%;
+  min-height: 44px;
+  margin-top: 2px;
+  font-size: 12px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.gearicons {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.gi {
+  background: #3a1d10;
+  color: #ffb066;
+  border: 1px solid #ff8a1f;
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+.gi.ready {
+  background: #ff8a1f;
+  color: #1a0d04;
+}
+.token {
+  position: relative;
+}
+.laserdot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff2a2a;
+  box-shadow: 0 0 6px 2px rgba(255, 42, 42, 0.7);
+}

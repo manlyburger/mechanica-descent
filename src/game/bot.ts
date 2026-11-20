@@ -180,6 +180,12 @@ export function botMove(s: GameState, style: BotStyle): Action {
       return { type: "pickPath", risky: style.risky };
     case "event": {
       const view = eventView(s)!;
+      if (s.event!.id === "recovery") {
+        // Rebuild the buddy first, then pods (secure, recruit, else let go), then frames.
+        const ok = view.options.filter((o) => o.enabled).map((o) => o.id);
+        const want = ["subdue", "secure", "recruit", "release"].find((x) => ok.includes(x)) ?? ok.find((x) => x.startsWith("rebuild:")) ?? ok.find((x) => x.startsWith("open:")) ?? ok.find((x) => x.startsWith("claim:")) ?? "done";
+        return { type: "event", option: want };
+      }
       const order = (style.bold ? BOLD : SAFE)[s.event!.id] ?? [];
       for (const id of order) {
         if (id === "CHOICE_COOLANT_SIPHON" && j && j.hp >= j.maxHp) continue;

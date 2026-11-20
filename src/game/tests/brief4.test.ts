@@ -370,7 +370,9 @@ describe("the R-8 story", () => {
     expect(choose(at("r8-recovery"), "avoid").team.episode).toBe(2);
   });
   it("the Brawler can be faced, evaded, or lured if you have bait", () => {
-    expect(eventView(at("r8-brawler"))!.options.find((o) => o.id === "lure")!.enabled).toBe(false);
+    const bare = at("r8-brawler");
+    bare.deck = bare.deck.filter((c) => !["FLARE", "QUIET", "BEACON"].includes(c.id));
+    expect(eventView(bare)!.options.find((o) => o.id === "lure")!.enabled).toBe(false);
     const lured = choose(at("r8-brawler", { hand: "FLARE" }), "lure");
     expect(lured.team.bishopExposed).toBe(true);
     expect(lured.units.some((u) => u.kind === "latchback")).toBe(false);

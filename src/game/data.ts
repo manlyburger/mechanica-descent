@@ -50,7 +50,11 @@ export type UnitKind =
   | "relay"
   | "prisoner"
   | "frame"
-  | "pilot";
+  | "pilot"
+  | "hunter"
+  | "tracker"
+  | "predator"
+  | "nightmare";
 
 export interface DepthRow {
   alwaysLight: number;
@@ -281,6 +285,39 @@ export const RULES = {
   safePassageRooms: 3,
   relayGuards: 2,
 
+  // ---- Brief 6: targeting, Robobuddy, pods, enemy gear, stalkers ----
+  randomTarget: 0.75, // the rest is tactical
+  buddyRebuildCost: 1, // Scrap taken out of one wreck (the brief proposed 2; an ordinary wreck here holds 1)
+  buddyRebuildHp: 0.5,
+  buddyLossThreat: 1, // only if Robobuddy is still wrecked when you leave the room
+  anonEject: { light: 0.3, lvl2: 0.4 } as Record<string, number>,
+  anonEmptyPod: 0.1,
+  podOutcome: { cooperative: 0.3, frightened: 0.35, hostile: 0.25, incapacitated: 0.1 },
+  subdue: 0.7,
+  magazine: 4,
+  missilePodDamage: 2,
+  missilePodCooldown: 2,
+  laserBonus: 0.1,
+  hitCap: 0.95,
+  gearSalvage: 0.3,
+  // [first room, chance, max] for random enemy equipment
+  gearDepth: [[1, 0, 0], [5, 0.25, 1], [9, 0.45, 1], [15, 0.65, 2], [21, 0.8, 2]] as [number, number, number][],
+  jubeyObv: 1, // Jubey's own eye, when no crew pilot sees better
+  obvBase: 0.1,
+  obvPer: 0.06,
+  obvMin: 0.05,
+  obvMax: 0.9,
+  stalkerThreat: 5,
+  stalkerSigns: 3,
+  stalkerMax: 1,
+  stalkerStartDistance: 3,
+  stalkerLevelBonus: [[5, 1], [7, 2], [9, 3]] as [number, number][], // Threat at creation -> +levels
+  stalkerReturnDistance: 3,
+  stalkerEject: 0.6, // a piloted stalker's cockpit fires when the frame goes
+  stalkerHpPerLevel: 2,
+  // Scrap in a wreck, by what it was. Anything not listed holds 1, as before.
+  wreckValue: { widow: 2, kilnheart: 2, bishop: 2, hunter: 2, tracker: 2, predator: 2, nightmare: 2 } as Record<string, number>,
+
   // ---- Enemy counterplay ----
   droneScavenge: 0.35,
   droneJam: 0.25,
@@ -356,6 +393,10 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   relay: { name: "Command Relay", hp: 6, atk: 0, missiles: 0, armor: 1, size: "heavy", tags: ["mechanical"] },
   frame: { name: "Salvaged Frame", hp: 7, atk: 2, missiles: 0, tags: ["mechanical", "machine"] },
   pilot: { name: "Pilot on foot", hp: 4, atk: 0, missiles: 0, size: "small", tags: [] },
+  hunter: { name: "Heavy Hunter", hp: 12, atk: 3, missiles: 0, armor: 1, size: "heavy", startProx: 1, tags: ["mechanical", "piloted", "heavy_machine", "melee", "anomaly_eligible"] },
+  tracker: { name: "Recon Stalker", hp: 8, atk: 2, missiles: 0, size: "medium", tags: ["mechanical", "piloted", "anomaly_eligible"] },
+  predator: { name: "Recovery Predator", hp: 10, atk: 2, missiles: 0, armor: 1, size: "heavy", tags: ["mechanical", "piloted", "heavy_machine", "repair_capable", "salvage_sensitive"] },
+  nightmare: { name: "Nightmare Stalker", hp: 11, atk: 3, missiles: 0, size: "heavy", startProx: 0, tags: ["mechanical", "heavy_machine", "melee"] },
   prisoner: { name: "The Prisoner", hp: 7, atk: 3, missiles: 0, size: "medium", tags: ["mechanical", "machine"] },
 };
 

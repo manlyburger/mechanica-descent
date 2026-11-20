@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { FRAME_FAULTS, ITEMS, PR, SPECS, TRAITS, P, type Action, type GameState } from "./game/engine";
+import { FRAME_FAULTS, ITEMS, PR, SPECS, TRAITS, P, discoveryChance, type Action, type GameState } from "./game/engine";
 import type { PilotRec } from "./game/state";
+import { label } from "./game/data";
 
 type Dispatch = (a: Action) => void;
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -123,6 +124,8 @@ function PilotSheet({ state, r, dispatch, live, frames }: { state: GameState; r:
           </div>
           <div className="rmeta">
             {r.origin} · {custodyText(state, r)} · {assignmentText(state, r)}
+            {r.eligible ? ` · qualified: ${label(r.eligible)}` : ""}
+            {(r.rest ?? 0) > 0 ? " · resting after the pod" : ""}
           </div>
         </div>
       </div>
@@ -168,7 +171,7 @@ function PilotSheet({ state, r, dispatch, live, frames }: { state: GameState; r:
 
       <div className="lane-label">STATS{r.points ? ` · ${r.points} point${r.points > 1 ? "s" : ""} to spend (cap ${cap})` : ""}</div>
       <div className="stats">
-        {(["mental", "skill", "endurance"] as const).map((s) => (
+        {(["mental", "skill", "endurance", "observation"] as const).map((s) => (
           <div key={s} className="statrow">
             <span className="sname">
               {s[0].toUpperCase() + s.slice(1)} <b>{P.statOf(r, s)}</b>
@@ -177,6 +180,7 @@ function PilotSheet({ state, r, dispatch, live, frames }: { state: GameState; r:
               {s === "mental" && `Madness penalties −${pct(P.madnessReduction(r))} · Nightmare: ${pct(P.nightmareResist(r))} to ignore 1`}
               {s === "skill" && `Accuracy +${pct(P.accuracy(state, r))} · checks ${[4, 6, 8, 10].map((t) => `${t}${skill >= t ? "✓" : "✗"}`).join(" ")}`}
               {s === "endurance" && `${pct(P.damageResist(r))} to ignore 1 · ${pct(P.deathAvoid(r))} to survive a killing blow`}
+              {s === "observation" && `Effective ${P.observation(r)} · spots enemy mods ${pct(discoveryChance(P.observation(r), "missilepod"))} before they act (party uses its best eye)`}
             </span>
             {r.points > 0 && (
               <button className="plus" disabled={!!block("stat", { stat: s })} onClick={() => act("stat", { stat: s })} aria-label={`raise ${s}`}>

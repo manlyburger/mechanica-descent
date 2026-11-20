@@ -28,7 +28,9 @@ import {
   chance,
   deal,
   drawCards,
-  enemyAct,
+  enemyTurn,
+  canPayEnergy,
+  payEnergy,
   freeEnemySlot,
   freeFriendSlot,
   giveRocketAmmo,
@@ -56,9 +58,16 @@ import { OUT_OF_FIGHT, buy, crewCount, initRoster, makeFleeing, maxHp, newItem, 
 import { crew, openCargo, openFleeing, openMech } from "./pilot-events";
 import { PR } from "./pilots-data";
 import { eventView, openEvent, openHallway, openPatient, openRemembers, openYard, resolveEvent, rollChoice, type Flow } from "./events";
-import { createGame, type Action, type GameState, type Unit } from "./state";
+import { SAVE_VERSION as SAVE_VERSION_, createGame, type Action, type GameState, type Unit } from "./state";
+import { magazine, makeGear, prepEnemies, prepEnemy, rescan } from "./gear";
+import { collectPods, openRecoveryScreen, recoveryAvailable, resolveCapsule, settleBuddy } from "./recovery";
+import { onPickPath, resolveStalkers, spawnStalker, stalker, stalkersRoomStart, createStalker } from "./stalkers";
+import { migrateObservation } from "./pilots";
 
 export { SAVE_VERSION, createGame } from "./state";
+export { GEAR, gearLine, discoveryChance } from "./gear";
+export * as RC from "./recovery";
+export * as ST from "./stalkers";
 export type { Action, CardInst, GameState, Unit, Wreck, Plan } from "./state";
 export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, tapCommands, type Command } from "./cards";
 export { integrityBand, captiveOf, whyNotRestrainable } from "./capture";
@@ -68,7 +77,7 @@ export * as P from "./pilots";
 export { PR, ITEMS, SPECS, TRAITS, FRAME_FAULTS } from "./pilots-data";
 import { ITEMS as PILOT_ITEMS } from "./pilots-data";
 export { eventView, type EventView, type Option } from "./events";
-export { living, jubey, enemyHitChance, allies } from "./core";
+export { living, jubey, enemyHitChance, allies, pickTarget as pickTargetForTest } from "./core";
 
 // ---------- room flow ----------
 
@@ -100,6 +109,7 @@ function rollPack(state: GameState): UnitKind[] {
 }
 
 function startRoom(state: GameState) {
+  const lastRisky = state.pathRisky;
   state.room += 1;
   state.turn = 0;
   state.units = state.units.filter((u) => u.side === "friendly" && u.hp > 0);
@@ -119,6 +129,7 @@ function startRoom(state: GameState) {
   state.nextPack = rollPack(state);
   state.teamEpisode = enterRoom(state);
   pilotsRoomStart(state);
+  stalkersRoomStart(state, lastRisky);
   state.phase = "route";
   log(state, `— Room ${state.room} path —`);
   if (state.room > RULES.deconEvery) addContamination(state, RULES.contamPerLegRoom, "The deep halls get on the rig.");
@@ -213,8 +224,21 @@ function arrive(state: GameState) {
     const kind = state.queue.shift()!;
     const u = spawn(state, kind, "enemy", slot);
     log(state, `${label(kind)} enters column ${slot + 1}.`);
+    prepEnemy(state, u);
     if (state.turn >= 1) tripMine(state, u);
   }
+}
+
+/** A stalker waiting behind the chosen door steps into this fight, unless R-8 already has the room. */
+function joinStalker(state: GameState) {
+  const s = stalker(state, state.pendingStalker ?? undefined);
+  state.pendingStalker = null;
+  if (!s || s.state === "defeated") return;
+  if (state.pendingTeam.length) {
+    log(state, "Something was waiting behind this door. It pulls back from the R-8 net and lets them have you.");
+    return;
+  }
+  spawnStalker(state, s);
 }
 
 function spawnPack(state: GameState) {
@@ -223,6 +247,7 @@ function spawnPack(state: GameState) {
   const nightP = (state.pathRisky ? odds.nightmare : 0) + state.extraNightmare;
   const extra: UnitKind[] = [...state.pendingSpawn];
   state.pendingSpawn = [];
+  joinStalker(state);
 
   if (chance(state, nightP)) {
     log(state, "Nightmare card: THE RIFLEMEN FILE IN.");
@@ -343,6 +368,8 @@ function resetFightState(state: GameState) {
   state.minesArmed = state.loadoutAd.filter((c) => c === "MINE").length;
   if (state.minesArmed > 0) log(state, `AM Mine deploys itself by the door (${state.minesArmed}).`);
   pilotsFightStart(state);
+  state.scanned = false;
+  prepEnemies(state);
   for (const u of state.units) {
     u.intercepted = false;
     u.sorted = 0;
@@ -377,7 +404,7 @@ function openTurnOne(state: GameState) {
     state.enemyInitiative = false;
     log(state, "It gets the first shot.");
     planEnemies(state);
-    for (const u of living(state, "enemy")) if (u.hp > 0 && state.phase === "player") enemyAct(state, u);
+    for (const u of living(state, "enemy")) if (u.hp > 0 && state.phase === "player") enemyTurn(state, u);
     if (isOver(state)) return;
   }
   beginPlayerTurn(state);
@@ -541,17 +568,28 @@ function checkClear(state: GameState) {
   if (hostiles(state).length || state.queue.length) return;
   const wasExtension = state.extension;
   log(state, wasExtension ? "The hallway is quiet." : `Room ${state.room} clear.`);
+  for (const u of living(state, "enemy")) if (u.kind === "capsule" && u.cap) resolveCapsule(state, u);
   state.custody = gatherCustody(state);
+  collectPods(state);
   for (const pin of state.pinned) {
     state.custody.push({ id: "pin-" + pin.pilot, kind: "capsule", pilot: pin.pilot, person: true, label: `${CALLSIGN[pin.role as Role] ?? "The"}'s pilot, pinned in the wreck`, bands: 0, hp: 1, tapped: true });
   }
   state.pinned = [];
   endFight(state);
+  resolveStalkers(state);
+  if (recoveryAvailable(state)) return openRecoveryScreen(state);
+  settleBuddy(state);
   if (state.custody.length) return openCustody(state);
   afterFight(state, wasExtension);
 }
 
+function afterRecovery(state: GameState) {
+  if (state.custody.length) return openCustody(state);
+  afterFight(state, state.extension);
+}
+
 function afterFight(state: GameState, wasExtension: boolean) {
+  resolveStalkers(state);
   if (!wasExtension) {
     state.bonusEnergy = 0;
     state.extraCrazy = 0;
@@ -617,7 +655,7 @@ function toTech(state: GameState) {
   log(state, "Tech Stop.");
 }
 
-const flow: Flow = { continueHall, finishRoom, startExtension, afterCustody: (state) => afterFight(state, state.extension) };
+const flow: Flow = { continueHall, finishRoom, startExtension, afterCustody: (state) => afterFight(state, state.extension), afterRecovery };
 
 // ---------- turn ----------
 
@@ -643,7 +681,7 @@ function endTurn(state: GameState) {
   for (const u of living(state, "enemy")) {
     if (state.phase !== "player") break;
     if (u.hp <= 0) continue;
-    enemyAct(state, u);
+    enemyTurn(state, u);
   }
   if (isOver(state)) return;
   arrive(state);
@@ -711,6 +749,7 @@ export function reduce(prev: GameState, action: Action): GameState {
       } else {
         spawn(state, "jubey", "friendly", 2);
         spawn(state, "robobuddy", "friendly", 3);
+        state.buddy = { status: "active", penalty: false, rebuilt: 0, deaths: 0 };
         log(state, "Lil Robobuddy falls in beside the rig.");
       }
       startRoom(state);
@@ -720,6 +759,7 @@ export function reduce(prev: GameState, action: Action): GameState {
       if (state.phase !== "route") break;
       state.pathRisky = action.risky;
       state.revealNext = false;
+      onPickPath(state, action.risky);
       log(state, action.risky ? "Risky red hall." : "Normal hall.");
       continueHall(state);
       break;
@@ -862,11 +902,48 @@ export function reduce(prev: GameState, action: Action): GameState {
     case "nextRoom":
       if (state.phase === "tech") startRoom(state);
       break;
+    case "scan": {
+      if (state.phase !== "player" || state.scanned || state.tap || !canPayEnergy(state, 1, false)) break;
+      payEnergy(state, 1, false);
+      state.scanned = true;
+      const n = rescan(state);
+      log(state, n ? "You spend a turn's attention sweeping the enemy line for modifications." : "You sweep the enemy line for modifications. Nothing new.");
+      break;
+    }
+    case "dismiss":
+      state.notices.shift();
+      break;
     case "qa":
       applyQa(state, action.cmd, action.n, action.s);
       break;
   }
   return state;
+}
+
+// ---------- saves ----------
+
+/**
+ * Brings a version 6 save up to version 7. Observation comes from a hash of
+ * the seed and the pilot's id: the same save always gets the same values, and
+ * Mental, Skill and Endurance are untouched. Returns null for anything else.
+ */
+export function migrate(raw: unknown): GameState | null {
+  const s = raw as GameState & { v: number };
+  if (!s || typeof s !== "object" || !Array.isArray(s.roster)) return null;
+  if (s.v === SAVE_VERSION_) return s;
+  if (s.v !== 6) return null;
+  const st = structuredClone(s) as GameState;
+  for (const r of st.roster) migrateObservation(st.seed, r);
+  st.pods = st.pods ?? [];
+  const buddy = st.units.some((u) => u.kind === "robobuddy" && u.side === "friendly" && u.hp > 0);
+  st.buddy = st.buddy ?? { status: buddy ? "active" : "none", penalty: false, rebuilt: 0, deaths: 0 };
+  st.stalkers = st.stalkers ?? [];
+  st.pendingStalker = st.pendingStalker ?? null;
+  st.routeSnippets = st.routeSnippets ?? [];
+  st.notices = st.notices ?? [];
+  st.scanned = st.scanned ?? false;
+  st.v = SAVE_VERSION_;
+  return st;
 }
 
 // ---------- legal actions (UI hints, bot, fuzz test) ----------
@@ -880,7 +957,7 @@ function pilotActions(state: GameState): Action[] {
   for (const r of state.roster) {
     const tries: Action[] = [];
     for (const op of ["talk", "treat", "agree", "recruit", "tighten", "unlock"] as const) tries.push({ type: "pilot", id: r.id, op });
-    for (const stat of ["mental", "skill", "endurance"]) tries.push({ type: "pilot", id: r.id, op: "stat", stat });
+    for (const stat of ["mental", "skill", "endurance", "observation"]) tries.push({ type: "pilot", id: r.id, op: "stat", stat });
     for (const target of ["", "foot", ...frames]) tries.push({ type: "pilot", id: r.id, op: "assign", target });
     for (let slot = 0; slot < 4; slot++) {
       tries.push({ type: "pilot", id: r.id, op: "unequip", slot });
@@ -893,6 +970,7 @@ function pilotActions(state: GameState): Action[] {
 
 export function legalActions(state: GameState): Action[] {
   const out: Action[] = pilotActions(state);
+  if (state.notices.length) out.push({ type: "dismiss" });
   switch (state.phase) {
     case "title":
     case "win":
@@ -928,6 +1006,7 @@ export function legalActions(state: GameState): Action[] {
         }
       }
       if (ejectedCommand(state)?.enabled) out.push({ type: "command", uid: "ejected", cmd: "retrieve" });
+      if (!state.scanned && canPayEnergy(state, 1, false)) out.push({ type: "scan" });
       out.push({ type: "endTurn" });
       break;
     }
@@ -1005,6 +1084,7 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
       for (const k of list) spawn(state, k as UnitKind, "enemy", freeEnemySlot(state));
       for (const m of state.pendingTeam) spawn(state, m.kind, "enemy", freeEnemySlot(state), { pilot: m.pilot, replacement: m.replacement });
       state.pendingTeam = [];
+      if (state.pendingStalker) joinStalker(state);
       for (const u of living(state, "enemy")) if (is(u, "melee") && u.prox === undefined) u.prox = UNITS[u.kind].startProx ?? 0;
       resetFightState(state);
       state.minesArmed = n === 1 ? state.minesArmed : 0;
@@ -1048,6 +1128,35 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
     case "parts":
       state.parts += n ?? 3;
       break;
+    case "stalker": {
+      // A stalker of the given kind, waiting for the next qa fight (n: distance; 0 = there now).
+      const st = createStalker(state, (s as UnitKind) || "hunter");
+      if (!n) {
+        st.state = "intercepting";
+        state.pendingStalker = st.id;
+      } else st.distance = n;
+      break;
+    }
+    case "gear": {
+      // "laser,extmag" bolts those onto the first enemy on the field, unrevealed.
+      const e = living(state, "enemy")[0];
+      if (e) {
+        e.gear = list.map((id) => makeGear(state, id as "laser"));
+        e.gearRolled = true;
+        e.ammo = magazine(e);
+      }
+      break;
+    }
+    case "pod": {
+      // An escape pod on the field: s = origin kind, n = 1 for an empty pod.
+      spawn(state, "capsule", "enemy", freeEnemySlot(state), { role: (s as UnitKind) || "light", reserved: `p-a${state.uidSeq++}`, occupant: n === 1 ? "empty" : "unresolved", exitIn: 2, note: "escape pod" });
+      break;
+    }
+    case "buddydown": {
+      const b = allies(state, "robobuddy")[0];
+      if (b) deal(state, b, 99, "QA", { unsurvivable: true });
+      break;
+    }
     case "captive": {
       // Puts an R-8 pilot into a vacant Pod (spawning one if needed), as if captured.
       const id = s ?? "p-needle";

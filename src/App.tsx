@@ -26,6 +26,8 @@ import {
   whyNotRestrainable,
   P,
   ITEMS,
+  migrate,
+  gearLine,
   type Action,
   type CardInst,
   type Command,
@@ -35,7 +37,8 @@ import {
 import "./App.css";
 import { Crew } from "./Crew";
 
-const KEY = "mechanica-descent-v6";
+const KEY = "mechanica-descent-v7";
+const OLD_KEY = "mechanica-descent-v6";
 type Dispatch = (a: Action) => void;
 const newSeed = () => (Date.now() % 99991) + 1;
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -46,6 +49,7 @@ const SHORT: Record<UnitKind, string> = {
   bulkhead: "Bulkhead", beacon: "Beacon", shepherd: "Shepherd", walker: "Walker", jack: "Panic Jack", warframe: "Warframe",
   clampjaw: "Clampjaw", pod: "Pod", needleback: "Courier", latchback: "Brawler", widow: "Widow", kilnheart: "Breaker",
   bishop: "Bishop", capsule: "Capsule", relay: "Relay", prisoner: "Prisoner", frame: "Frame", pilot: "Pilot",
+  hunter: "Hunter", tracker: "Recon", predator: "Predator", nightmare: "Nightmare",
 };
 
 function load(): GameState {
@@ -54,6 +58,12 @@ function load(): GameState {
     if (raw) {
       const s = JSON.parse(raw) as GameState;
       if (s && s.v === SAVE_VERSION && Array.isArray(s.deck) && Array.isArray(s.wrecks) && s.team && Array.isArray(s.roster)) return s;
+    }
+    // A run saved by the previous version carries over, with Observation added.
+    const old = localStorage.getItem(OLD_KEY);
+    if (old) {
+      const s = migrate(JSON.parse(old));
+      if (s && Array.isArray(s.deck) && Array.isArray(s.wrecks) && s.team) return s;
     }
   } catch {
     /* storage unavailable or save unreadable: start clean */
@@ -116,6 +126,17 @@ function App() {
         {help && <Help />}
       </header>
 
+      {inRun && state.notices.length > 0 && (
+        <section className="panel notice" role="status">
+          <h2>{state.notices[0].title}</h2>
+          {state.notices[0].lines.map((l, i) => (
+            <p key={i}>{l}</p>
+          ))}
+          <button className="btn gold" onClick={() => dispatch({ type: "dismiss" })}>
+            OK
+          </button>
+        </section>
+      )}
       {state.phase === "title" && <Title state={state} dispatch={dispatch} />}
       {state.phase === "loadout" && <Loadout dispatch={dispatch} />}
       {state.phase === "route" && <Route state={state} dispatch={dispatch} />}
@@ -274,6 +295,12 @@ function Route({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
   return (
     <section className="panel">
       <h2>Room {state.room}. Pick a path.</h2>
+      {state.routeSnippets.map((s, i) => (
+        <p key={i} className="snippet">
+          {s}
+        </p>
+      ))}
+      {state.buddy.status === "wrecked" && <p className="muted">Lil Robobuddy: a shell in the rig. It can be rebuilt from {RULES.buddyRebuildCost} wreck Scrap after a fight.</p>}
       <p className="muted">
         {state.revealNext
           ? `${state.intel.questionable ? "UNVERIFIED records say" : "You know what is in there"}: ${(state.intel.questionable ? ["drone" as UnitKind, ...state.nextPack.slice(1)] : state.nextPack).map((k) => label(k)).join(", ") || "nothing"}.`
@@ -342,6 +369,7 @@ function planText(state: GameState, u: Unit): string {
   if (p.type === "disabled") return u.foam ? "foamed" : (u.sealed ?? 0) > 0 ? `sealed ${u.sealed}` : "stunned";
   if (p.type === "eject") return p.note ?? "PREPARING TO EJECT";
   if (p.type === "detonate") return "REACTOR FAILURE THIS TURN";
+  if (p.type === "reload") return "RELOADING";
   return p.note ?? p.type;
 }
 
@@ -359,6 +387,11 @@ function statusLines(state: GameState, u: Unit): string[] {
     if (u.replacement) s.push("replacement frame");
     if (u.guardBy) s.push("covered by the Brawler");
     if (u.missiles > 0) s.push(`lock ${u.lock}/2`);
+    if (u.plan?.laser && u.plan.targetUid) s.push(`red dot on ${SHORT[state.units.find((x) => x.uid === u.plan!.targetUid)?.kind ?? "jubey"]}`);
+    const mods = gearLine(u);
+    if (mods) s.push(mods);
+    if (u.ammo !== undefined && u.ammo <= 1) s.push(u.ammo === 0 ? "magazine empty" : "last round");
+    if (u.kind === "capsule" && u.occupant === "empty") s.push("hatch open");
     if (u.note && !u.note.includes("tapped")) s.push(u.note);
     const why = whyNotRestrainable(u);
     if (why && why !== "not a machine") s.push(why);
@@ -585,15 +618,22 @@ function Battle({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
           ))}
           {state.hand.length === 0 && <div className="muted handempty">Hand empty.</div>}
         </div>
-        <button
-          className="btn ghost endturn"
-          onClick={() => {
-            clear();
-            dispatch({ type: "endTurn" });
-          }}
-        >
-          End turn
-        </button>
+        <div className="endrow">
+          {!state.scanned && (
+            <button className="btn ghost scan" disabled={state.energy < 1} onClick={() => dispatch({ type: "scan" })} title="One more Observation roll on every unidentified enemy modification. Once per fight.">
+              Scan for mods · 1E
+            </button>
+          )}
+          <button
+            className="btn ghost endturn"
+            onClick={() => {
+              clear();
+              dispatch({ type: "endTurn" });
+            }}
+          >
+            End turn
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -656,7 +696,18 @@ function Token({ unit, state, target, open, onClick }: { unit: Unit; state: Game
         {unit.crazy ? " ✱" : ""}
         {unit.leech ? " ⛭" : ""}
         {unit.pilot && unit.side === "enemy" ? " ●" : ""}
+        {unit.stalkerId ? " ◆" : ""}
       </div>
+      {(unit.gear ?? []).some((g) => g.revealed) && (
+        <div className="gearicons" aria-label={gearLine(unit)}>
+          {(unit.gear ?? []).filter((g) => g.revealed).map((g) => (
+            <span key={g.uid} className={`gi ${g.id}${g.id === "missilepod" && g.cd === 0 ? " ready" : ""}`}>
+              {g.id === "missilepod" ? "⇈" : g.id === "extmag" ? "▮▮" : "◎"}
+            </span>
+          ))}
+        </div>
+      )}
+      {unit.plan?.laser && <div className="laserdot" aria-hidden="true" />}
       {unit.prox !== undefined && unit.prox > 0 && !unit.cap && <div className="proxtag">{unit.prox >= RULES.proxEngaged ? "IN REACH" : "CLOSING"}</div>}
       {unit.cap && <div className="proxtag cap">{unit.cap.state === "secured" ? "SECURED" : "SECURING"}</div>}
       <div className="th">

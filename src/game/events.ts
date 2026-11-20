@@ -27,6 +27,7 @@ import {
 import type { GameState, Unit } from "./state";
 import { isStory, resolveStory, storyView } from "./story";
 import { isPilotEvent, pilotEventView, resolvePilotEvent } from "./pilot-events";
+import { isRecovery, recoveryView, resolveRecovery } from "./recovery";
 
 export interface Option {
   id: string;
@@ -48,6 +49,7 @@ export interface Flow {
   finishRoom(state: GameState): void;
   startExtension(state: GameState, kinds: UnitKind[], setup?: (state: GameState, foes: Unit[]) => void): void;
   afterCustody(state: GameState): void;
+  afterRecovery(state: GameState): void;
 }
 
 type Data = Record<string, number | string | boolean | string[]>;
@@ -210,6 +212,7 @@ function openSub(state: GameState) {
 export function eventView(state: GameState): EventView | null {
   const ev = state.event;
   if (!ev) return null;
+  if (isRecovery(ev.id)) return recoveryView(state);
   if (isStory(ev.id)) return storyView(state);
   if (isPilotEvent(ev.id)) return pilotEventView(state);
   const d = ev.data;
@@ -381,6 +384,10 @@ function patientWakes(state: GameState, repairable: boolean) {
 export function resolveEvent(state: GameState, option: string, flow: Flow) {
   const ev = state.event;
   if (!ev) return;
+  if (isRecovery(ev.id)) {
+    if (resolveRecovery(state, option)) flow.afterRecovery(state);
+    return;
+  }
   if (isStory(ev.id)) return resolveStory(state, option, flow);
   if (isPilotEvent(ev.id)) return resolvePilotEvent(state, option, flow);
   const view = eventView(state);

@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.5)
+# Mechanica Descent — build notes (v0.6)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -20,8 +20,93 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/game/pilots-data.ts` | Pilot items, specializations, personalities, frame faults, every pilot tuning value (`PR`) |
 | `src/game/pilots.ts` | Pilot records, stats, levels, equipment, loyalty, custody strain, assignments, pilots in fights |
 | `src/game/pilot-events.ts` | Empty-Cockpit Mech, Suspicious Cargo Above, Fleeing Pilot |
+| `src/game/gear.ts` | Enemy equipment cards, enemy magazines, Observation checks, equipment salvage |
+| `src/game/recovery.ts` | The post-combat recovery screen: escape pods and their occupants, Robobuddy reconstruction, abandoned frames |
+| `src/game/stalkers.ts` | Threat stalkers: creation, level, movement, interception, elimination, orange route snippets |
 | `src/Crew.tsx` | The crew panel: roster, equipment screen, stats, loyalty, assignment barrier |
-| `src/game/tests/` | 260 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/tests/` | 312 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.6 adds
+
+Brief 6: escape pod recovery, enemy equipment, Observation, Robobuddy reconstruction and Threat stalkers. This section is the completion report the brief asks for, in its order.
+
+### 1. Implemented
+
+- **Post-combat recovery.** A pod still on the floor when the last fighter drops no longer keeps the fight going. It waits on a new screen, COMBAT COMPLETE — RECOVERY AVAILABLE, which lists pods, wrecks (with their Scrap), damaged chassis and Robobuddy. Flying pods and running pilots still keep a fight going: they are getting away. Nothing has to be opened before you leave.
+- **Escape pods.** Light Mechs (30%) and Level 2 Mechs (40%) may fire their cockpit as they die. An R-8 ejection or a stalker's cockpit gives a named pod. Opening a pod has four outcomes (cooperative, frightened, hostile, incapacitated), or an empty pod when the pod's own record says so. Choices: recruit, secure, medical, question, release, or leave it sealed.
+- **Enemy equipment.** Add-On Missile Pod, Extended Magazine and Laser Sight, rolled once per enemy from the brief's depth table. Ranged enemies now have a 4-round magazine and a telegraphed reload turn, because Extended Magazine needs one to extend.
+- **Observation (Obv).** A fourth pilot stat, rolled and raised like the others. Discovery chance is 10% + 6% × the party's best effective Obv − concealment, clamped to 5–90%. Equipment is checked once when an enemy enters, and once more with the new **Scan for mods** action (1 Energy, once a fight).
+- **Random targeting.** 75% uniform among legal targets, 25% tactical.
+- **Robobuddy reconstruction** from one wreck's Scrap, with a loss penalty only if you leave it a shell.
+- **Threat stalkers.** Heavy Hunter, Recon Stalker, Recovery Predator and Nightmare Stalker, one at a time from Threat 5. Each has a level, a route state and a door it waits behind. Eliminating one shows STALKING THREAT ELIMINATED and takes Threat down by its level plus the difficulty bonus.
+- **Orange route snippets** above the path choices, drawn from the stalker's real state.
+
+### 2. Existing systems reused
+
+- Capsules and `launch()` from v0.4 carry named pods. Pods become the recovery screen's records when the fight ends.
+- `makePilot`, the level tables, specializations, traits, loyalty bands and items from v0.5 make pod pilots and stalker pilots. These are ordinary roster records, so custody, strain, talking, recruiting and equipment all apply.
+- Securing a pod uses `takeCaptive`, so the one-captive-per-holder rule and the Cockpit Parts key are the existing ones.
+- Claiming an abandoned chassis uses `spawnFrame`. A random fault and half HP make it a damaged frame.
+- `setPilot` decides what an escape means. A released or abandoned R-8 pilot gets R-8's replacement-frame rules; a pilot wearing a Tracking Relay becomes a runner.
+- Stalker units are ordinary enemy units with tags, melee closing, armor and the new equipment.
+
+### 3. Proposed or incomplete
+
+- **Subsystem damage disabling equipment** (sensor damage switching off a sight, weapon damage switching off a magazine): there is no subsystem damage to hang it on. Smoke and ECM still work through the accuracy steps, and the sight adds on top of them.
+- **Intact capture improving equipment salvage**: not built. Each installed item gets one salvage roll when its enemy is destroyed: a Laser Sight becomes a Stabilized Targeting module, anything else 2 Scrap.
+- **Cover, elevation and line of fire for missiles**: the lane has none. The missile pod reaches anything a ranged weapon can, including overhead targets.
+- **More than one stalker at extreme Threat**: `stalkerMax` is 1. At Threat 9+ the active stalker closes two rooms per transition instead.
+- **"Search nearby rooms" and "react to combat noise"**: movement is distance-based. A missed interception makes it pick a door again; the Recon Stalker reads your last path 75% of the time.
+- **Stalker art and per-archetype models**: they reuse the heavy-frame token. A ◆ marks them.
+
+### 4. Targeting changes
+
+- Every ordinary attack: 75% a uniformly random legal target, 25% tactical. Tactical means the most wounded target it can reach, with exceptions: Level 2s, Zombies and the Patient still go for an awake Warframe; the Infested still hunt Jubey at high Threat or Contamination; the Predator prefers machines; the Nightmare Stalker prefers people.
+- Kept as explicit exceptions, applied on top: the Threat Beacon decoy, the saboteur run at the Warframe, the Latchback covering Bishop, the Widow's capsule recovery, the Needleback's mark, Bishop's orders.
+- Melee range is checked first, so a random pick never lets a melee unit skip closing. The Missile Pod picks its own target and can hit overhead units.
+- Survivability: no ally HP was raised. Robobuddy gets reconstruction. Everything else takes its share of fire as the brief intends.
+
+### 5. Robobuddy recovery
+
+- At 0 HP it becomes a shell: off the line, no strippable wreck, record kept (`state.buddy`).
+- On the recovery screen: RECONSTRUCT ROBOBUDDY from any wreck holding at least `buddyRebuildCost` Scrap. That Scrap leaves the wreck, so it cannot also be stripped. It comes back at 50% HP, rounded up.
+- If you leave it a shell, Threat +1, once per destruction. It stays rebuildable from a later wreck, with no refund.
+- **Changed from the brief**: the cost is 1 Scrap, not 2. Ordinary wrecks here hold 1 Scrap, so a cost of 2 meant almost no rebuilds before room 5. Raising every wreck to 2 Scrap made the whole game about 15 points easier (see Balance).
+
+### 6. Pod occupants
+
+- **Named**: an R-8 pilot or a stalker's pilot. Opening it shows that exact record, with its stats, gear and story state. Its outcome follows its loyalty band, or incapacitated at 1 HP.
+- **Anonymous**: the pilot id is reserved when the pod fires. That id is the Cockpit Parts key shared by the wreck and the pod. Opening generates exactly one pilot: specialization from the origin mech (Light: Scout or Assault; Level 2: Assault or Heavy; Widow: Recovery or Technician, and so on), level from depth, all four stats, a gear profile, and condition and loyalty from the outcome. They are marked as qualified for their origin mech. Incapacitated pilots rest a room before taking a frame.
+- A pod clamped during the fight settles its occupant when custody opens, so custody always sees a person.
+- Left sealed: a named pilot escapes. An anonymous occupant is never generated.
+
+### 7. Stalker difficulty and Threat reduction
+
+- Expected enemy level for a room: 1 + ⌊(room − 1) / 3⌋. The game had no enemy level curve, so this is new.
+- Stalker level, fixed at creation: expected level + 1 at Threat 5–6, + 2 at 7–8, + 3 at 9+. HP is the base plus 2 per level above 1. Damage is the base plus 1 per two levels above 1.
+- Difficulty rating: level + 1 per equipment card.
+- Reduction: level + max(0, rating − expected level for the room it dies in). Threat never drops below 0. The reduction applies once per stalker.
+- Counts as eliminated: frame destroyed with an unpiloted stalker, or the pilot dead, captured or recruited. A pilot who gets away leaves it unresolved: it returns 3 rooms out in a refit, same level.
+
+### 8. UI changes
+
+- **Route**: orange snippets, and Robobuddy's shell status.
+- **Battle**: equipment icons on identified enemies (◎ sight, ▮▮ magazine, ⇈ missile pod, solid when ready), a red dot on any enemy whose Laser Sight is aiming (shown before it is identified), RELOADING and last-round status, ◆ on stalkers, and the Scan for mods button.
+- **Events**: the recovery screen.
+- **Anywhere**: a notice card for STALKING THREAT ELIMINATED.
+- **Crew panel**: the Observation row with its discovery chance, plus a qualified-for and resting note.
+- **Saves**: a version 6 save loads, migrated.
+
+### 9. Tests
+
+312 pass: 52 new in `brief6.test.ts`, one or more per validation scenario, numbered to match. The fuzz invariants also cover pods, Observation, Robobuddy, stalkers, wreck Scrap and ammo, and the random-play coverage check now requires the recovery screen, every stalker state, an opened pod, a revealed item and a reload. Four existing tests changed: three because a pod on the floor now ends a fight, or because Observation shifts seeded rolls; one because Madness could make its Slug misfire under the new seed.
+
+### 10. Known issues and unsupported dependencies
+
+- **Robobuddy is now the strongest start** (see Balance). Random targeting means it absorbs a real share of fire, and it is rebuilt after most fights.
+- **A captive stalker pilot who later escapes** does not restart the stalker: the elimination stands, as the brief asks for "securely removed".
+- **Stalkers and R-8 never share a room.** If both would arrive, the stalker waits behind its door for another room.
+- Subsystem damage, cover, and multiple simultaneous stalkers do not exist yet (see 3).
 
 ## What v0.5 adds
 
@@ -191,23 +276,26 @@ The briefs say to implement the smallest compatible equivalent where a concept i
 
 ## Balance, as measured
 
-`npm run sim` plays 1,200 runs per row with a simple heuristic bot. It takes in fleeing pilots and fields them, but never captures anyone and never equips or talks.
+`npm run sim 1000` plays 1,000 runs per row with a heuristic bot. It rebuilds Robobuddy, opens pods, secures or recruits what it can and claims frames. It never equips or talks. "Careful" starts with Lil Robobuddy unless the row says otherwise.
 
-| Bot | Past room 2 | Reached first Decon | v0.4 | Walked out clean |
+| Bot | Past room 2 | Reached first Decon | v0.5 | Walked out clean |
 | --- | --- | --- | --- | --- |
-| Careful, Shabby Lootbox | 73% | 61% | 56% | 61% |
-| Careful, AM Mine | 83% | 68% | 63% | 68% |
-| Careful, Lil Robobuddy | 75% | 66% | 63% | 66% |
-| Careful, old cards only | 74% | 64% | 59% | 64% |
-| Greedy (red hall, strips everything) | 88% | 71% | 70% | 71% |
-| Careful, goes deeper once | 75% | 66% | 63% | 41% |
-| Greedy, goes deeper twice | 88% | 71% | 70% | 49% |
+| Passive (no machines, no salvage) | 72% | 51% | — | 51% |
+| Careful, Shabby Lootbox | 77% | 68% | 61% | 68% |
+| Careful, AM Mine | 83% | 73% | 68% | 73% |
+| Careful, Lil Robobuddy | 89% | 84% | 66% | 84% |
+| Careful, old cards only | 87% | 80% | 64% | 80% |
+| Greedy (red hall, strips everything) | 92% | 82% | 71% | 82% |
+| Careful, goes deeper once | 89% | 84% | 66% | 58% |
+| Greedy, goes deeper twice | 92% | 82% | 71% | 59% |
 
 What that says:
 
-- **Every row is about 3–5 points easier** than v0.4. The new encounters hand out Scrap, items and the odd frame, and none of them is dangerous for a careful bot.
-- **Crew stays small**: the bot ends a run with 0.2 crew on average. Fleeing pilots are rare (10% a room from room 2).
-- **The bot never captures, equips or talks**, so loyalty, custody and equipment are covered by tests and by hand, not by the sim.
+- **Robobuddy runs are about 18 points easier.** Under random targeting the buddy absorbs a real share of the shots that used to go to Jubey, and it is rebuilt about 1.1 times a run for 1 Scrap. The knobs are `buddyRebuildCost` (2 would allow rebuilds only from heavy wrecks), `randomTarget`, and `buddyLossThreat`.
+- **Lootbox and Mine runs are 5–7 points easier.** Pod pilots join the crew (about 0.7 a run), and the Jubey-focused fire is gone.
+- **Measured and rejected:** wrecks worth 2 Scrap each, which added about 15 more points across the board. Ordinary wrecks are back to 1.
+- **Stalkers mostly hunt greedy runs.** 21% of greedy runs and 41% of three-leg greedy runs are stalked. Careful bots rarely hold Threat at 5, because it drains a point every fight turn without salvage. The three-leg greedy bot eliminates 0.16 a run.
+- **Enemy equipment starts at room 5**, after the first Decon, so it does not show in that column. Magazine reloads cost ranged enemies about one turn in five; on their own they changed survival by under a point.
 
 ## Open questions carried over
 
@@ -265,3 +353,11 @@ The two briefs are stored verbatim:
 "Push later when there's more updates" answers the question asked after Prompt 6: v0.4 and v0.5 stay local until a later update.
 
 - `docs/briefs/05-pilot-equipment-progression-loyalty-and-choice-encounters.txt`
+
+**Prompt 8 (2026-11-20)**, with one attached brief (uploaded as `454339d0-attachment.txt`)
+
+> Next update
+
+Read as: build the attached brief as v0.6. With v0.4, v0.5 and v0.6 all done, there are now "more updates" for Prompt 7's "push later", so the branch is pushed.
+
+- `docs/briefs/06-escape-pods-enemy-equipment-observation-robobuddy-stalkers.txt`

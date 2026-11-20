@@ -133,7 +133,8 @@ describe("Cockpit Wedge", () => {
     s = end(s);
     expect(foe(s, "needleback").wedge).toBe(0);
     s = end(s);
-    expect(s.units.some((u) => u.kind === "capsule")).toBe(true); // wedge gone: ejection works again
+    // Wedge gone: ejection works again. With the frame empty the fight ends, and the pod waits for recovery.
+    expect(s.units.some((u) => u.kind === "capsule") || s.pods.some((p) => p.pilot === "p-needle")).toBe(true);
   });
   it("can be removed for 1 Energy", () => {
     let s = fight({ team: "latchback", hand: "WEDGE", energy: 1 });

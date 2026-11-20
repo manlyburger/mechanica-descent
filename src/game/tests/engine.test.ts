@@ -60,6 +60,28 @@ function checkInvariants(s: GameState) {
   }
   if (!["active", "disrupted", "dormant"].includes(s.team.pursuit)) expect(s.pendingTeam.length, "team spawn after the pursuit ended").toBe(0);
   for (const u of s.units) if (u.prox !== undefined) expect(u.prox >= 0 && u.prox <= RULES.proxEngaged).toBe(true);
+  // Brief 6. Pods: one record per pod, one person per pod, nobody in a pod and in custody at once.
+  expect(new Set(s.pods.map((p) => p.id)).size, "pod duplicated").toBe(s.pods.length);
+  const podPilots = s.pods.filter((p) => p.pilot && !p.resolved).map((p) => p.pilot!);
+  expect(new Set(podPilots).size, "one pilot in two pods").toBe(podPilots.length);
+  for (const id of podPilots) {
+    expect(s.captives.some((c) => c.pilot === id), "pilot both in a pod and held").toBe(false);
+    expect(s.units.some((u) => u.pilot === id && u.hp > 0), "pilot both in a pod and on the field").toBe(false);
+  }
+  for (const r of s.roster) expect(r.base.observation + r.earned.observation, "Observation").toBeGreaterThanOrEqual(1);
+  // Robobuddy: a shell is never also standing on the line.
+  if (s.buddy.status === "wrecked") expect(s.units.some((u) => u.kind === "robobuddy" && u.hp > 0), "wrecked Robobuddy fielded").toBe(false);
+  // Stalkers: within the cap, defeated once, never an R-8 pilot.
+  expect(s.stalkers.filter((x) => x.state !== "defeated").length).toBeLessThanOrEqual(RULES.stalkerMax);
+  for (const st of s.stalkers) {
+    if (st.pilot) expect(s.team.pilots.some((p) => p.id === st.pilot), "stalker driven by an R-8 pilot").toBe(false);
+    if (st.state === "defeated") expect(st.reduction, "defeat without its reduction").toBeGreaterThan(0);
+    const fielded = s.units.filter((u) => u.stalkerId === st.id && u.hp > 0).length;
+    expect(fielded, "stalker fielded twice").toBeLessThanOrEqual(1);
+    if (st.state === "defeated") expect(fielded, "defeated stalker on the field").toBe(0);
+  }
+  for (const w of s.wrecks) expect(w.value, "wreck spent below zero").toBeGreaterThan(0);
+  for (const u of s.units) if (u.ammo !== undefined) expect(u.ammo >= 0).toBe(true);
 }
 
 /** A run that starts rich and tough with every card, so the fuzzer reaches everything. */
@@ -74,6 +96,7 @@ function loaded(seed: number): GameState {
   if (seed % 2) s = reduce(s, { type: "qa", cmd: "recruit", n: 50 });
   s = reduce(s, { type: "qa", cmd: "item", s: "sidearm,medkit,muffle,plockbands,shackles,tracker,scanner,sync" });
   if (seed % 3 === 0) s = reduce(s, { type: "qa", cmd: "parts", n: 3 });
+  if (seed % 2 === 0) s.threat = 6; // stalkers start hunting from the next room
   s.scrap = 40;
   s.energyCap = 3;
   s.jubeyMax = 25;
@@ -85,6 +108,14 @@ const seen = new Set<string>();
 const played = new Set<string>();
 const endings = new Set<string>();
 const statuses = new Set<string>();
+const brief6 = new Set<string>();
+function note6(s: GameState) {
+  for (const st of s.stalkers) brief6.add("stalker:" + st.state);
+  if (s.pods.some((p) => p.opened)) brief6.add("pod:opened");
+  if (s.buddy.rebuilt > 0) brief6.add("buddy:rebuilt");
+  if (s.units.some((u) => u.gear?.some((g) => g.revealed))) brief6.add("gear:revealed");
+  if (s.units.some((u) => u.plan?.type === "reload")) brief6.add("reload");
+}
 
 describe("engine", () => {
   it("starts on the loadout screen with the starting deck", () => {
@@ -126,22 +157,27 @@ describe("engine", () => {
         let a = acts[Math.floor(rnd() * acts.length)];
         if (s.phase === "player" && rnd() < 0.2) a = { type: "endTurn" };
         if (s.phase === "decon") a = { type: "decon", deeper: rnd() < 0.85 };
+        // Memory Tap has a target only for a moment: take it when it does, half the time.
+        const tap = acts.find((x) => x.type === "play" && s.hand.find((c) => c.uid === x.uid)?.id === "MEMTAP");
+        if (tap && rnd() < 0.5) a = tap;
         if (a.type === "play") played.add(s.hand.find((c) => c.uid === (a as { uid: string }).uid)!.id);
         if (a.type === "pilot") played.add("pilot:" + a.op + (a.op === "assign" ? (a.target === "foot" ? ":foot" : a.target ? ":frame" : "") : ""));
         s = reduce(s, a);
         if (s.event) seen.add(s.event.id);
         if (!["active", "disrupted", "dormant"].includes(s.team.pursuit)) endings.add(s.team.pursuit);
         for (const p of s.team.pilots) statuses.add(p.status);
+        note6(s);
         checkInvariants(s);
       }
     }
   }, 200_000);
 
   it("random play reached every event, card, pilot action and ending", () => {
-    for (const id of ["hallway", "hw-maint", "hw-behind", "hw-salvage", "hw-circle", "hw-eats", "patient", "yard", "remembers", "scared", "choice", "custody", "r8-recovery", "r8-brawler", "r8-relay", "r8-talk", "prisoner", "mech", "cargo", "fleeing"]) expect(seen.has(id), `event ${id} never opened`).toBe(true);
+    for (const id of ["hallway", "hw-maint", "hw-behind", "hw-salvage", "hw-circle", "hw-eats", "patient", "yard", "remembers", "scared", "choice", "custody", "r8-recovery", "r8-brawler", "r8-relay", "r8-talk", "prisoner", "mech", "cargo", "fleeing", "recovery"]) expect(seen.has(id), `event ${id} never opened`).toBe(true);
     for (const id of REWARD_POOL) expect(played.has(id), `card ${id} never played`).toBe(true);
     for (const op of ["equip", "unequip", "assign:foot", "assign:frame", "talk", "treat", "stat", "unlock"]) expect(played.has("pilot:" + op), `pilot op ${op} never used`).toBe(true);
     expect(endings.size, "no run ever ended the pursuit").toBeGreaterThanOrEqual(1);
+    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
     expect(statuses.has("dead") && (statuses.has("escaped") || statuses.has("withdrawn")), `pilot outcomes seen: ${[...statuses].join(", ")}`).toBe(true);
   });
 

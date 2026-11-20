@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eventView, reduce } from "../engine";
-import { RULES, ally, cmd, end, fight, findSeed, foe, j, play, qa, run } from "./helpers";
+import { RULES, ally, cmd, end, fight, findSeed, foe, j, noPods, play, qa, run } from "./helpers";
 import { createGame } from "../engine";
 
 const choose = (s: ReturnType<typeof fight>, option: string) => reduce(s, { type: "event", option });
@@ -342,7 +342,7 @@ describe("loadout and descent", () => {
     expect(ally(s, "robobuddy").hp).toBe(RULES.buddyHp);
     for (const e of s.units.filter((u) => u.side === "enemy")) e.hp = 1;
     const scrap = s.scrap;
-    s = play(s, "BURST");
+    s = noPods(() => play(s, "BURST"));
     expect(s.phase).toBe("salvage");
     expect(s.scrap).toBe(scrap + 1);
     expect(s.threat).toBe(0);

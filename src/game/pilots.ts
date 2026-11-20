@@ -2,7 +2,7 @@
 // changes as they move between enemy, captive, runner and crew. Stats, levels,
 // equipment, loyalty, custody strain, assignments, and their part in fights.
 
-import { UNITS, label, type UnitKind } from "./data";
+import { RULES, UNITS, label, type UnitKind } from "./data";
 import { loseCaptive } from "./capture";
 import { setPilot } from "./team";
 import { addScrap, allies, chance, deal, freeEnemySlot, freeFriendSlot, is, living, log, pick, roll, spawn, takeWreck, uid } from "./core";
@@ -11,7 +11,7 @@ import type { GameState, ItemInst, PilotRec, Unit } from "./state";
 import { CALLSIGN, type Role } from "./team-text";
 
 export const BAND_NAMES = ["Hostile", "Unwilling", "Partially Willing", "Cooperative", "Loyal"];
-const STATS: Stat[] = ["mental", "skill", "endurance"];
+const STATS: Stat[] = ["mental", "skill", "endurance", "observation"];
 
 // ---------- records ----------
 
@@ -50,7 +50,9 @@ export function fieldedUnit(state: GameState, r: PilotRec): Unit | undefined {
 function rollStats(state: GameState, level: number) {
   const [lo, hi] = PR.statRange[level];
   const r = () => lo + Math.floor(roll(state) * (hi - lo + 1));
-  return { mental: r(), skill: r(), endurance: r() };
+  // Observation is rolled last, so the first three come out exactly as before it existed.
+  const m = r(), s = r(), e = r();
+  return { mental: m, skill: s, endurance: e, observation: r() };
 }
 
 export function makePilot(
@@ -61,7 +63,7 @@ export function makePilot(
     ...o,
     xp: PR.xpFor[o.level],
     base: rollStats(state, o.level),
-    earned: { mental: 0, skill: 0, endurance: 0 },
+    earned: { mental: 0, skill: 0, endurance: 0, observation: 0 },
     points: 0,
     hp: 0,
     madness: 0,
@@ -115,6 +117,29 @@ export function skillFor(state: GameState, r: PilotRec, ctx: Ctx, frame?: Unit):
   if (frame && !SPECS[r.spec as Spec].frames.includes(frame.chassis as Chassis)) s += PR.incompatibleSkill;
   void state;
   return Math.max(0, s);
+}
+/** Observation as it counts for spotting: Scouts and scanners help. */
+export function observation(r: PilotRec): number {
+  return statOf(r, "observation") + (r.spec === "Scout" ? 2 : 0) + (has(r, "scanner") ? 1 : 0);
+}
+/** The one roll for the whole party uses its best eye. Crew only: captives are not watching for you. */
+export function partyObservation(state: GameState): { obv: number; who: string } {
+  let best = { obv: RULES.jubeyObv, who: "Jubey" };
+  for (const r of state.roster) {
+    if (r.custody !== "ally" || r.away > 0 || r.hp <= 0) continue;
+    const o = observation(r);
+    if (o > best.obv) best = { obv: o, who: r.name };
+  }
+  return best;
+}
+/** Deterministic Observation for a record saved before the stat existed. */
+export function migrateObservation(seed: number, r: PilotRec) {
+  if (r.base.observation !== undefined) return;
+  let h = seed >>> 0;
+  for (const ch of r.id) h = ((Math.imul(h ^ ch.charCodeAt(0), 2654435761) >>> 0) ^ (h >>> 13)) >>> 0;
+  const [lo, hi] = PR.statRange[Math.min(PR.maxLevel, r.level)];
+  r.base.observation = lo + (h % (hi - lo + 1));
+  r.earned.observation = r.earned.observation ?? 0;
 }
 export function madnessReduction(r: PilotRec): number {
   return Math.min(PR.mentalMadnessCap, PR.mentalMadness * statOf(r, "mental") + (has(r, "dampener") ? 0.15 : 0));
@@ -255,7 +280,7 @@ function moveToInventory(state: GameState, r: PilotRec, filter: (d: ItemDef) => 
 
 // ---------- Cockpit Parts ----------
 
-export const PILOTED: UnitKind[] = ["light", "lvl2", "powered", "needleback", "latchback", "widow", "kilnheart", "bishop"];
+export const PILOTED: UnitKind[] = ["light", "lvl2", "powered", "needleback", "latchback", "widow", "kilnheart", "bishop", "hunter", "tracker", "predator"];
 
 /** One roll per cockpit source, ever. */
 export function rollParts(state: GameState, key: string, why: string) {
@@ -359,6 +384,7 @@ export function assignBlock(state: GameState, r: PilotRec, target: string): Bloc
   if (b <= 1) return { reason: "UNWILLING — ASSIGNMENT RESTRICTED", barrier: true };
   if (has(r, "harness")) return { reason: "the Armored Restraint Harness rules out field assignments" };
   if (target === "foot") return null;
+  if ((r.rest ?? 0) > 0) return { reason: "still recovering from the pod: no frame this room" };
   const f = state.units.find((u) => u.uid === target && u.kind === "frame" && u.side === "friendly" && u.hp > 0);
   if (!f) return { reason: "no such frame" };
   if (r.custody === "captive" && b < 3) return { reason: "a Partially Willing captive takes limited tasks only: scouting and inspection, not a frame" };
@@ -412,6 +438,7 @@ export function pilotsRoomStart(state: GameState) {
   const t = state.team;
   const pursuing = t.pursuit === "active" || t.pursuit === "disrupted";
   for (const r of state.roster) {
+    if ((r.rest ?? 0) > 0) r.rest! -= 1;
     if (r.away > 0) {
       r.away -= 1;
       if (!r.away) log(state, `${r.name} finds their way back to you.`);
@@ -814,7 +841,7 @@ export function medkitCharge(state: GameState, prefer?: PilotRec): ItemInst | un
   }
   return undefined;
 }
-function spendCharge(state: GameState, it: ItemInst) {
+export function spendCharge(state: GameState, it: ItemInst) {
   it.charges = (it.charges ?? 1) - 1;
   if (it.charges > 0) return;
   state.items = state.items.filter((x) => x !== it);

@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.6)
+# Mechanica Descent — build notes (v0.6.1)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -24,7 +24,12 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/game/recovery.ts` | The post-combat recovery screen: escape pods and their occupants, Robobuddy reconstruction, abandoned frames |
 | `src/game/stalkers.ts` | Threat stalkers: creation, level, movement, interception, elimination, orange route snippets |
 | `src/Crew.tsx` | The crew panel: roster, equipment screen, stats, loyalty, assignment barrier |
-| `src/game/tests/` | 312 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/tests/` | 314 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.6.1 changes
+
+- **Robobuddy reassembly takes two rooms** (Prompt 9). Rebuilding it on the recovery screen still takes the wreck's Scrap and cancels the pending Threat at once. It then sits out the next two rooms and rejoins at the start of the third, at half HP: rebuilt after room 5's fight, it is back for room 8. If the line is full when its room comes, it waits in the rig until a slot opens. The route and recovery screens say which room it returns in. Tunable as `RULES.buddyReassemblyRooms`.
+- Effect, measured: careful Robobuddy runs reaching the first Decon went from 84% to 81%. It is still the strongest start, mostly because random targeting makes it a decoy during fights. Also raising the rebuild cost to 2 Scrap only took it to 78%.
 
 ## What v0.6 adds
 
@@ -69,7 +74,7 @@ Brief 6: escape pod recovery, enemy equipment, Observation, Robobuddy reconstruc
 ### 5. Robobuddy recovery
 
 - At 0 HP it becomes a shell: off the line, no strippable wreck, record kept (`state.buddy`).
-- On the recovery screen: RECONSTRUCT ROBOBUDDY from any wreck holding at least `buddyRebuildCost` Scrap. That Scrap leaves the wreck, so it cannot also be stripped. It comes back at 50% HP, rounded up.
+- On the recovery screen: RECONSTRUCT ROBOBUDDY from any wreck holding at least `buddyRebuildCost` Scrap. That Scrap leaves the wreck, so it cannot also be stripped. It comes back at 50% HP, rounded up. Since v0.6.1 it sits out two rooms first.
 - If you leave it a shell, Threat +1, once per destruction. It stays rebuildable from a later wreck, with no refund.
 - **Changed from the brief**: the cost is 1 Scrap, not 2. Ordinary wrecks here hold 1 Scrap, so a cost of 2 meant almost no rebuilds before room 5. Raising every wreck to 2 Scrap made the whole game about 15 points easier (see Balance).
 
@@ -361,3 +366,10 @@ The two briefs are stored verbatim:
 Read as: build the attached brief as v0.6. With v0.4, v0.5 and v0.6 all done, there are now "more updates" for Prompt 7's "push later", so the branch is pushed.
 
 - `docs/briefs/06-escape-pods-enemy-equipment-observation-robobuddy-stalkers.txt`
+
+**Prompt 9 (2026-11-21)**
+
+> Add a 2 room delay for the buddy to reassemble.
+> Before doing so make a list of improvement options to the game
+
+Read as: it sits out two full rooms after a rebuild. The improvement list was given in the conversation, not stored here.

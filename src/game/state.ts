@@ -383,7 +383,14 @@ export interface GameState {
   /** Tracked escapees who turn up running in the next fight. */
   pendingRunners: string[];
   pods: PodRec[];
-  buddy: { status: "none" | "active" | "wrecked"; penalty: boolean; rebuilt: number; deaths: number };
+  buddy: {
+    status: "none" | "active" | "wrecked" | "reassembling";
+    penalty: boolean;
+    rebuilt: number;
+    deaths: number;
+    /** While reassembling: the room it rejoins at. */
+    readyRoom?: number;
+  };
   stalkers: Stalker[];
   pendingStalker: string | null;
   routeSnippets: string[];

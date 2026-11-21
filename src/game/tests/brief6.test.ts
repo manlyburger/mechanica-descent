@@ -8,7 +8,7 @@ import { discoveryChance, magazine, makeGear, prepEnemy } from "../gear";
 import { observation, partyObservation, rec, statOf } from "../pilots";
 import { POOLS, createStalker, defeat, expectedLevel, rating, reductionFor, resolveStalkers, stalkerStats } from "../stalkers";
 import { RULES, ally, choose, end, fight, foe, j, noPods, play, qa, run, said, sane, withRules } from "./helpers";
-import { enemyHitChance, living } from "../core";
+import { enemyHitChance, freeFriendSlot, living } from "../core";
 
 const begun = (seed = 7, pick: "lootbox" | "buddy" = "lootbox") => run(createGame(seed), { type: "start", seed }, { type: "loadout", pick });
 const options = (s: GameState) => eventView(s)?.options ?? [];
@@ -515,12 +515,40 @@ describe("Robobuddy reconstruction", () => {
     expect(rebuild.enabled).toBe(true);
     const threat = s.threat;
     s = choose(s, rebuild.id);
+    expect(s.buddy).toMatchObject({ status: "reassembling", penalty: false, rebuilt: 1, deaths: 1, readyRoom: s.room + RULES.buddyReassemblyRooms + 1 });
+    expect(s.units.some((u) => u.kind === "robobuddy")).toBe(false);
+    s = choose(s, "done");
+    expect(s.threat).toBe(threat);
+  });
+  it("a rebuilt Robobuddy sits out the next two rooms, then rejoins at half HP", () => {
+    let s = noPods(() => slugAll(downed(), ["light"]));
+    const built = s.room;
+    s = choose(s, options(s).find((o) => o.id.startsWith("rebuild:"))!.id);
+    s = choose(s, "done");
+    for (let i = 1; i <= RULES.buddyReassemblyRooms; i++) {
+      s = nextRoom(s);
+      expect(s.room).toBe(built + i);
+      expect(s.buddy.status, `room ${s.room}`).toBe("reassembling");
+      expect(s.units.some((u) => u.kind === "robobuddy"), `room ${s.room}`).toBe(false);
+    }
+    s = nextRoom(s);
+    expect(s.room).toBe(built + RULES.buddyReassemblyRooms + 1);
     const b = ally(s, "robobuddy");
     expect(b.hp).toBe(Math.ceil(RULES.buddyHp * RULES.buddyRebuildHp));
     expect(b.maxHp).toBe(RULES.buddyHp);
-    expect(s.buddy).toMatchObject({ status: "active", penalty: false, rebuilt: 1, deaths: 1 });
-    s = choose(s, "done");
-    expect(s.threat).toBe(threat);
+    expect(s.buddy.status).toBe("active");
+    // Saving and reloading mid-reassembly changes nothing.
+    let t = noPods(() => slugAll(downed(), ["light"]));
+    t = choose(choose(t, options(t).find((o) => o.id.startsWith("rebuild:"))!.id), "done");
+    expect(sane(t).buddy).toEqual(t.buddy);
+  });
+  it("a full line makes it wait a room longer instead of overlapping", () => {
+    let s = noPods(() => slugAll(downed(), ["light"]));
+    s = choose(choose(s, options(s).find((o) => o.id.startsWith("rebuild:"))!.id), "done");
+    while (freeFriendSlot(s) >= 0) s = qa(s, "ally", undefined, "builder");
+    for (let i = 0; i <= RULES.buddyReassemblyRooms; i++) s = nextRoom(s);
+    expect(s.buddy.status).toBe("reassembling");
+    expect(said(s, "no room on the line")).toBe(true);
   });
   it("31. left as a shell, the penalty lands exactly once", () => {
     let s = noPods(() => slugAll(downed(), ["light"]));

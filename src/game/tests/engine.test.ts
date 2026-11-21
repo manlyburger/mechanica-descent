@@ -70,7 +70,8 @@ function checkInvariants(s: GameState) {
   }
   for (const r of s.roster) expect(r.base.observation + r.earned.observation, "Observation").toBeGreaterThanOrEqual(1);
   // Robobuddy: a shell is never also standing on the line.
-  if (s.buddy.status === "wrecked") expect(s.units.some((u) => u.kind === "robobuddy" && u.hp > 0), "wrecked Robobuddy fielded").toBe(false);
+  if (s.buddy.status === "wrecked" || s.buddy.status === "reassembling") expect(s.units.some((u) => u.kind === "robobuddy" && u.hp > 0), "Robobuddy fielded while down").toBe(false);
+  if (s.buddy.status === "reassembling") expect(s.buddy.readyRoom, "reassembling without a return room").toBeGreaterThan(0);
   // Stalkers: within the cap, defeated once, never an R-8 pilot.
   expect(s.stalkers.filter((x) => x.state !== "defeated").length).toBeLessThanOrEqual(RULES.stalkerMax);
   for (const st of s.stalkers) {

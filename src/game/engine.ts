@@ -60,7 +60,7 @@ import { PR } from "./pilots-data";
 import { eventView, openEvent, openHallway, openPatient, openRemembers, openYard, resolveEvent, rollChoice, type Flow } from "./events";
 import { SAVE_VERSION as SAVE_VERSION_, createGame, type Action, type GameState, type Unit } from "./state";
 import { magazine, makeGear, prepEnemies, prepEnemy, rescan } from "./gear";
-import { collectPods, openRecoveryScreen, recoveryAvailable, resolveCapsule, settleBuddy } from "./recovery";
+import { buddyRoomStart, collectPods, openRecoveryScreen, recoveryAvailable, resolveCapsule, settleBuddy } from "./recovery";
 import { onPickPath, resolveStalkers, spawnStalker, stalker, stalkersRoomStart, createStalker } from "./stalkers";
 import { migrateObservation } from "./pilots";
 
@@ -129,6 +129,7 @@ function startRoom(state: GameState) {
   state.nextPack = rollPack(state);
   state.teamEpisode = enterRoom(state);
   pilotsRoomStart(state);
+  buddyRoomStart(state);
   stalkersRoomStart(state, lastRisky);
   state.phase = "route";
   log(state, `— Room ${state.room} path —`);

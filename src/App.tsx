@@ -301,6 +301,7 @@ function Route({ state, dispatch }: { state: GameState; dispatch: Dispatch }) {
         </p>
       ))}
       {state.buddy.status === "wrecked" && <p className="muted">Lil Robobuddy: a shell in the rig. It can be rebuilt from {RULES.buddyRebuildCost} wreck Scrap after a fight.</p>}
+      {state.buddy.status === "reassembling" && <p className="muted">Lil Robobuddy is reassembling in the rig: back in room {state.buddy.readyRoom}.</p>}
       <p className="muted">
         {state.revealNext
           ? `${state.intel.questionable ? "UNVERIFIED records say" : "You know what is in there"}: ${(state.intel.questionable ? ["drone" as UnitKind, ...state.nextPack.slice(1)] : state.nextPack).map((k) => label(k)).join(", ") || "nothing"}.`

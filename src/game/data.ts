@@ -289,6 +289,7 @@ export const RULES = {
   randomTarget: 0.75, // the rest is tactical
   buddyRebuildCost: 1, // Scrap taken out of one wreck (the brief proposed 2; an ordinary wreck here holds 1)
   buddyRebuildHp: 0.5,
+  buddyReassemblyRooms: 2, // rooms it sits out after a rebuild before it rejoins
   buddyLossThreat: 1, // only if Robobuddy is still wrecked when you leave the room
   anonEject: { light: 0.3, lvl2: 0.4 } as Record<string, number>,
   anonEmptyPod: 0.1,

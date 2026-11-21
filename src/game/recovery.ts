@@ -43,24 +43,46 @@ export function rebuildBlock(state: GameState, wreckId?: string): string | null 
     return state.wrecks.length ? `No wreck holds ${RULES.buddyRebuildCost} Scrap (best: ${best}).` : "No wreckage here to rebuild from.";
   }
   if (wreckId && !ok.some((w) => w.id === wreckId)) return "That wreck does not hold enough Scrap.";
-  if (freeFriendSlot(state) < 0) return "No room on the line for it.";
   return null;
 }
-/** Takes the Scrap out of one wreck and puts Robobuddy back together. The Scrap is gone from the wreck: it cannot be stripped again. */
+export function rebuildHp(): number {
+  return Math.ceil(buddyMaxHp() * RULES.buddyRebuildHp);
+}
+/** The room it would rejoin at if rebuilt now: it sits out the next buddyReassemblyRooms rooms. */
+export function readyRoomFor(state: GameState): number {
+  return state.room + RULES.buddyReassemblyRooms + 1;
+}
+/**
+ * Takes the Scrap out of one wreck and starts putting Robobuddy back together.
+ * The Scrap is gone from the wreck: it cannot be stripped again. It rejoins
+ * after sitting out the next buddyReassemblyRooms rooms.
+ */
 export function rebuildBuddy(state: GameState, wreckId: string): boolean {
   if (rebuildBlock(state, wreckId)) return false;
   const w = state.wrecks.find((x) => x.id === wreckId)!;
   w.value -= RULES.buddyRebuildCost / RULES.salvageScrap;
   if (w.value <= 0) takeWreck(state, w.id);
-  const hp = Math.ceil(buddyMaxHp() * RULES.buddyRebuildHp);
-  spawn(state, "robobuddy", "friendly", freeFriendSlot(state), { hp, maxHp: buddyMaxHp() });
   const b = state.buddy;
   const avoided = b.penalty;
-  b.status = "active";
+  b.status = "reassembling";
+  b.readyRoom = readyRoomFor(state);
   b.penalty = false;
   b.rebuilt += 1;
-  log(state, `ROBOBUDDY RECONSTRUCTED from the ${w.pile ? "spilled cargo" : label(w.kind) + " wreck"}: −${RULES.buddyRebuildCost} Scrap from it, ${hp}/${buddyMaxHp()} HP. ${avoided ? `Pending +${RULES.buddyLossThreat} Threat avoided.` : "The Threat from leaving it earlier stands."}`);
+  log(state, `ROBOBUDDY REASSEMBLING from the ${w.pile ? "spilled cargo" : label(w.kind) + " wreck"}: −${RULES.buddyRebuildCost} Scrap from it. Back on the line in room ${b.readyRoom} at ${rebuildHp()}/${buddyMaxHp()} HP. ${avoided ? `Pending +${RULES.buddyLossThreat} Threat avoided.` : "The Threat from leaving it earlier stands."}`);
   return true;
+}
+/** Room start: a reassembled Robobuddy rejoins when its room comes and there is a slot for it. */
+export function buddyRoomStart(state: GameState) {
+  const b = state.buddy;
+  if (b.status !== "reassembling" || state.room < (b.readyRoom ?? 0)) return;
+  const slot = freeFriendSlot(state);
+  if (slot < 0) {
+    log(state, "Lil Robobuddy is ready, but there is no room on the line for it. It waits in the rig.");
+    return;
+  }
+  spawn(state, "robobuddy", "friendly", slot, { hp: rebuildHp(), maxHp: buddyMaxHp() });
+  b.readyRoom = undefined;
+  log(state, `Lil Robobuddy clicks the last plate into place and drops in beside the rig (${rebuildHp()}/${buddyMaxHp()} HP).`);
 }
 /** Leaving the room with Robobuddy still a shell: the loss is felt once per destruction. */
 export function settleBuddy(state: GameState) {
@@ -264,6 +286,7 @@ export function recoveryView(state: GameState): EventView {
   if (state.wrecks.length) lines.push(`• ${state.wrecks.length} wreck${state.wrecks.length > 1 ? "s" : ""} available (${scrap} Scrap in all).`);
   if (frames.length) lines.push(`• ${frames.length} damaged mech chassis.`);
   const b = state.buddy;
+  if (b.status === "reassembling") lines.push(`Lil Robobuddy is reassembling: back in room ${b.readyRoom}.`);
   if (b.status === "wrecked") {
     const best = Math.max(0, ...state.wrecks.map(wreckScrap));
     lines.push(`ROBOBUDDY DISABLED · Eligible wreck salvage: ${best} Scrap · Recovery requirement: ${RULES.buddyRebuildCost} Scrap.${b.penalty ? ` Reconstruction avoids the pending +${RULES.buddyLossThreat} Threat.` : " (Its Threat was already paid.)"}`);
@@ -304,7 +327,7 @@ export function recoveryView(state: GameState): EventView {
     const ok = rebuildWrecks(state);
     const why = rebuildBlock(state);
     if (why) o.push(opt("rebuild-none", "RECONSTRUCT ROBOBUDDY", why, false));
-    else for (const w of ok) o.push(opt(`rebuild:${w.id}`, `RECONSTRUCT ROBOBUDDY from the ${w.pile ? "spilled cargo" : label(w.kind) + " wreck"}`, `${wreckScrap(w)} Scrap → ${wreckScrap(w) - RULES.buddyRebuildCost} left to strip. ${Math.ceil(buddyMaxHp() * RULES.buddyRebuildHp)} HP.`));
+    else for (const w of ok) o.push(opt(`rebuild:${w.id}`, `RECONSTRUCT ROBOBUDDY from the ${w.pile ? "spilled cargo" : label(w.kind) + " wreck"}`, `${wreckScrap(w)} Scrap → ${wreckScrap(w) - RULES.buddyRebuildCost} left to strip. Reassembles for ${RULES.buddyReassemblyRooms} rooms; back in room ${readyRoomFor(state)} at ${rebuildHp()} HP.`));
   }
   for (const w of frames) {
     const slot = freeFriendSlot(state);

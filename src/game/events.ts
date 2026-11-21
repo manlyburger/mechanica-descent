@@ -28,6 +28,7 @@ import type { GameState, Unit } from "./state";
 import { isStory, resolveStory, storyView } from "./story";
 import { isPilotEvent, pilotEventView, resolvePilotEvent } from "./pilot-events";
 import { isRecovery, recoveryView, resolveRecovery } from "./recovery";
+import { nmResolve, nmView } from "./nightmare";
 
 export interface Option {
   id: string;
@@ -39,8 +40,8 @@ export interface EventView {
   title: string;
   lines: string[];
   options: Option[];
-  /** The Prisoner's expression screen: ellipses and punctuation only, with a sound caption. */
-  screen?: { glyph: string; anim: string; caption: string };
+  /** An expression screen (the Prisoner, the Conductor), with a sound caption. */
+  screen?: { glyph: string; anim: string; caption: string; who?: string };
 }
 
 /** Hooks the engine provides, so this module never drives room flow itself. */
@@ -212,6 +213,7 @@ function openSub(state: GameState) {
 export function eventView(state: GameState): EventView | null {
   const ev = state.event;
   if (!ev) return null;
+  if (ev.id === "nightmare" && state.nm.room) return nmView(state);
   if (isRecovery(ev.id)) return recoveryView(state);
   if (isStory(ev.id)) return storyView(state);
   if (isPilotEvent(ev.id)) return pilotEventView(state);
@@ -384,6 +386,7 @@ function patientWakes(state: GameState, repairable: boolean) {
 export function resolveEvent(state: GameState, option: string, flow: Flow) {
   const ev = state.event;
   if (!ev) return;
+  if (ev.id === "nightmare") return nmResolve(state, option, flow);
   if (isRecovery(ev.id)) {
     if (resolveRecovery(state, option)) flow.afterRecovery(state);
     return;

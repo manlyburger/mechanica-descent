@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.7)
+# Mechanica Descent — build notes (v0.8)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -22,12 +22,153 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/game/pilot-events.ts` | Empty-Cockpit Mech, Suspicious Cargo Above, Fleeing Pilot |
 | `src/game/gear.ts` | Enemy equipment cards, enemy magazines, Observation checks, equipment salvage |
 | `src/game/recovery.ts` | The post-combat recovery screen: escape pods and their occupants, Robobuddy reconstruction, abandoned frames |
+| `src/game/nightmare.ts` | Nightmare Rooms: Threat bands, severity, the six rooms, outcome odds, persistent consequences, the Dead Frame, CASKET-13, ASHMOUTH, transmissions |
 | `src/game/parts.ts` | Part damage on enemy machines, cover, range across the lane, shifting along your own line |
 | `src/game/restraint.ts` | Restraint items as capture tools: odds, binding, bound captives |
 | `src/App.tsx` | App shell: save/load, header, which screen is showing |
 | `src/ui/` | One file per screen: `Battle`, `Token` (unit tiles and status), `Route`, `EventPanel`, `Between` (salvage, reward, Decon, Tech Stop, end), `Start`, `Help`, `Crew`, and `shared` (cards, chips, the log) |
 | `src/game/stalkers.ts` | Threat stalkers: creation, level, movement, interception, elimination, orange route snippets |
-| `src/game/tests/` | 335 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/tests/` | 391 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.8 adds
+
+Brief 7: Nightmare Rooms, to make the Red Hall a real risk. This section is the completion report the brief asks for, in its order.
+
+### Threat depletion observed, and the bands chosen
+
+- **Depletion in the source:** −1 Threat on entering a room after a room where nothing was stripped (since v0.7). Stripping a wreck adds +1. Nothing else drains it.
+- **Measured** over 600 runs each, at every room start:
+  - Careful bot: median 1, never above 3.
+  - Greedy bot (red halls, strips everything): median 5, 75th percentile 8, 90th 13, 99th 20, highest seen 29.
+- So the brief's 10/20/35/50 bands would be "never" or "almost never". Per its TUNE LATER note, I recalibrated rather than adopting that scale:
+
+| Threat | Band | Severity | Danger term |
+| --- | --- | --- | --- |
+| 0–3 | Low | — | 0 |
+| 4–7 | Elevated | — | 1 |
+| 8–12 | High | +1 tier | 2 |
+| 13–19 | Severe | +2 tiers | 3 |
+| 20+ | Extreme | +2 tiers, and every Crisis costs +1 Madness more | 3 |
+
+- **Severity:** the room sets the base (I from room 1, II from 5, III from 10, IV from 15). Modifiers: the Threat band above; +1 at Madness 6+ (Madness here rarely passes 6, so 60% of the briefs' 0–10 scale); +1 for a second Red Hall in a row. Capped at IV.
+- It uses Threat after that room's entry decay. Nothing decays again for entering or looking at a Nightmare Room.
+- **Danger and odds** follow the brief: Danger = clamp(Severity − 1 + band + risk − preparation, 0, 7). Clean is 75% − 8% × Danger, Complication 20% + 3% × Danger, Crisis 5% + 5% × Danger.
+  - Risk: Cautious 0, Standard 1, Reckless 2.
+  - Preparation comes from stats, items and earlier choices, as each option says.
+  - The outcome is rolled once on choosing and stored. Reopening the screen never rerolls.
+- **How often:** a Red Hall holds a Nightmare Room 60% of the time (`nmChance`), while any eligible room is unseen. Each room appears once a run. Entering costs Madness equal to the tier, once. A crew pilot with Mental 7+ takes 1 off it, never below 1. Each room allows 3 actions, then only Leave.
+
+### Which rooms work
+
+All six are functional and reachable in play; the random-play test reaches the Choir, the Staircase, the Reliquary and the Wrong Robobuddy. Every choice shows its cost, reward, all three odds, what its Crisis does, what can follow you, what helps, and whether a stalker may be involved.
+
+- **The Captive Choir (I–IV), with THE CONDUCTOR.** It has its own screen of out-of-sync eyes and waveforms.
+  - Three captives with three distinct states. A compromised captive looks frightened until checked.
+  - A free pilot you let go, or who escaped, can be one of them: the same record.
+  - **All six branches work.** Negotiate (1 Energy; releases one); Interrupt (1 Energy; Skill 6+ and a Toolkit or Acoustic Dampener help); Isolate (needs a real Signal Isolator or Communication Monitor; afterwards the Conductor can never reach your radio this run); Question (Observation and Mental help; a Crisis plants a lie that a second question exposes); Open the Compartments (reckless while synchronized); Accept the Offer.
+  - Accepting creates a real agreement. Breaking it later makes Interrupt, Isolate or Open one step more dangerous, and the Conductor says so.
+- **The Hangar That Breathes (III–IV): CASKET-13.**
+  - Choices: Inspect the reactor (Observation or Skill 5+), Power it up (2 Scrap, 1 Energy, +1 Scrap if the reactor needs repair), Assign a pilot, Strip it, Abandon.
+  - **As yours:** 14 HP, 4 melee damage, every third blow splashes 2 into the columns beside its target. +2 Madness each fight, 1 less with a pilot aboard.
+  - **Reactor:** it heats a point each fight unless a pilot supervises it, warns at 3, and surges at 4 (2 to itself and its neighbours, then back to 1). "Vent the reactor" in a fight costs 1 Energy.
+  - **Assigning** uses the ordinary assignment rules, so a captive must be Cooperative and the usual loyalty and bolt rules apply.
+  - **Hostile CASKET-13** happens only on a Crisis. At tier IV, the Power-up Crisis also wakes a second, separate chassis that follows you as a Dead Frame.
+- **The Cinder Reliquary (II–IV): ASHMOUTH CHARGE.**
+  - Choices: Take it, Stabilize first (1 Energy, or Skill 6+), Strip it, or Detonate in place (every enemy in this room's fight starts 2 HP down; Threat +1, or +2 and your stalker learns where you are on a Crisis).
+  - **The weapon** is a one-shot card: 9 damage, 3 splash to the enemies beside the target and to your unit straight across, +2 Threat.
+  - **Heat** climbs a point every room transition. A notice comes at 3, and another at 4 saying it fails at the next transition. Then it fails: 4 to Jubey, +2 Threat, the card gone.
+  - **Answers on the route screen:** Vent (1 Scrap, −2 heat), Abandon, or fire it.
+  - At Severe Threat or higher, firing pulls a real active stalker a room closer. It never invents one.
+- **The Wrong Robobuddy (II–IV).**
+  - The room reads Robobuddy's real state: active, wrecked, reassembling, or never had one. Its text changes to match.
+  - Choices: Inspect with Observation, Approach, Send the real Robobuddy (only if it is active), Attempt Reconstruction (only if it is a wreck and a real wreck holds the Scrap; it calls the normal rebuild), Destroy it in this room's fight, Leave.
+  - The real Robobuddy's unit, record and counters never change. The imitation is an enemy with 4 HP and 1 damage that copies Robobuddy's wreck collecting.
+  - On an Approach Crisis it follows you into a later fight. At tier IV, the Dead Frame comes instead.
+- **The Staircase with Too Many Landings (I–IV).**
+  - Choices: Follow the Emergency Lights, Map the Staircase (Skill or Observation; reveals the next room and makes the next Nightmare Room one step safer), Follow the Voices (reckless; a lost pilot can join you), Use a Pilot Scout (can tell you which door your stalker waits behind), Turn Back.
+  - **At tier III+**, 60% of the time the thing climbing is a real Dead Frame. You get Prepare an Ambush (it arrives 3 HP down) or Obstruct Its Route (2 Scrap).
+  - **Turning back** with one climbing schedules it for a later fight. The preview says so.
+  - Room count, branches and save continuity are untouched.
+- **The Last Safe Room (III–IV).**
+  - Its condition is decided when the room is made: genuine (about 40%), malfunction, surveillance or trap. Higher Threat tilts it toward trap. A real cue line matches each state, such as the terminal showing your pilot's name.
+  - Choices: Rest, Repair the Army (2 Scrap), Inspect Security, Gather Supplies, Seal the Room (1 Scrap), Neutralize the hidden mech (only once Inspect has found it), Leave.
+  - A trap (or surveillance at tier IV) hides a damaged mech with a chassis ID. A Crisis on Rest or Supplies schedules that exact chassis as a Dead Frame. Neutralizing or sealing it cancels that.
+
+### Delayed consequences that can occur
+
+- **Dead Frame** (pending Zombie) can come from: the Hangar Power-up Crisis at tier IV; the Wrong Robobuddy Approach Crisis at tier IV; the Staircase when you turn back with it climbing, or an Obstruct Crisis; the Safe Room Rest or Supplies Crisis with a hidden mech.
+- **Imitation** (pending Zombie-type) can come from the Wrong Robobuddy Approach Crisis below tier IV.
+- **Transmission disturbance** can come from: the Choir (Negotiate Crisis, Interrupt Crisis, Isolate Crisis, Accept Crisis at tier III+); the Wrong Robobuddy Inspect Crisis; the Safe Room Inspect Crisis in a surveillance room; the Staircase Voices Complication at tier IV.
+- **Navigation disturbance** can come from the Staircase Lights or Map Crisis.
+- **Caps:** one Zombie-type, one transmission and one navigation at a time. A second one is refused with a log line, and previews say "already one following you".
+- **Recorded on each:** origin room, event, choice, entity (chassis ID), severity, Threat at the time, window, foreshadowing and status (pending, active, resolved, canceled, expired).
+- **Windows:**
+  - Zombie-types: the next fight, from the next room. If no fight comes in 2 room transitions, they expire with a log line.
+  - Transmissions: 2 transitions.
+  - Navigation: the next room.
+- **Immediate encounters** go into this room's fight, and the preview says so: hostile CASKET-13, the imitation via Send or Destroy, the Staircase's Ambush or Voices, an extra Light Mech or Level 2.
+
+### Do Zombie mechs enter later fights?
+
+- **Yes.** Verified by tests 30, 35 and 40, which play the run on to the next room's fight, and by the random-play test, which reaches the Dead Frame.
+- **On arrival** the log reads "NO PILOT DETECTED" with its chassis ID, and the route screen warns "Something heavy, chassis …, has been following you since room N" until then.
+- **The Dead Frame:** 8 HP, 2 melee damage. It closes only every other turn through the normal melee closing. One Reassemble (+2 HP), telegraphed a turn ahead. At tier IV, one Sudden Motion lurch, also telegraphed. No pilot, no capsule, no recruit, no stalker bounty. Its wreck is ordinary salvage.
+
+### Transmission glitches
+
+- **Mechanical:**
+  - While a disturbance is active, room intel is marked UNVERIFIED and can be wrong (the existing questionable-intel path).
+  - A crew pilot with Observation 6+ identifies the corrupted line: "repeated voice pattern, duplicate timestamps, Conductor origin".
+  - Ending it: "Purge the comms" (2 Scrap, or free with a Technician's Toolkit), isolating the Conductor in the Choir, or waiting 2 room transitions.
+- **Presentation-only:**
+  - The SIGNAL ANOMALY lines: the stuttering relay, "All clear. All clear. All clear.", and "Then why is something moving behind you?".
+  - The orange jitter style (off under reduced motion) and the Conductor's screen.
+  - Buttons, costs and odds are never altered. A test checks that the legal actions are identical with and without a disturbance.
+
+### Not done, and unsupported dependencies
+
+- **PRATTLE-9 and the Silent Access Coupler do not exist in this build.** The Conductor is its own system, nothing grants anything digital powers, and test 49 just confirms there is no PRATTLE-9 to affect.
+- **The Dead Frame is a new unit (`deadframe`).** The game already had a "Zombie Mech" enemy (`zombie`). I left it alone and did not rename either.
+- **No PRATTLE-9 commentary on disturbances.** R-8's radio lines are not themselves corrupted. The disturbance shows on the route screen, in the log and in Nightmare Rooms.
+- **CASKET-13** has no separate "valid control mode": powered up unpiloted, it acts as an autonomous ally. Its pilot is supervision. "Emergency extraction" is the ordinary frame-loss ejection when it is destroyed with a pilot inside.
+- **The Choir's "subsystem damage" Complication is presentation only** (the ward's lights fail behind you), so a nonviolent fix carries no hidden cost.
+- **The sim bot takes one cautious or standard action per Nightmare Room and leaves.** It never fires ASHMOUTH on purpose, never claims CASKET-13 deliberately, and rarely triggers delayed consequences (0.07 a run on three-leg greedy runs). Those paths are covered by the 56 brief tests and the random-play test, not the sim.
+
+### Tests and results
+
+- **391 tests pass:** 56 new in `brief7.test.ts`, one or more per required test, numbered 1–50.
+- **The random-play test** also checks:
+  - Consequence caps and windows, unique effect ids, rooms seen once, ASHMOUTH heat ≤ 4, at most one CASKET-13 and one Robobuddy.
+  - That play reaches the four lower-tier rooms, an active transmission and a Dead Frame on the field.
+- **Bugs found and fixed:**
+  - A planted lie showed the captive's true state.
+  - A Tracking Relay runner could spawn while that pilot was already back in an R-8 frame.
+  - QA fights skipped scheduled Dead Frames.
+  - The save key had not moved to v9.
+- **Manual check:** screenshots at 390 px of the Choir with the Conductor's screen, the Hangar's previews, the route screen with a SIGNAL ANOMALY line, ASHMOUTH at critical heat and a follower warning, and a Dead Frame telegraphing REASSEMBLING.
+
+### Balance
+
+| Bot | Reached first Decon | v0.7 |
+| --- | --- | --- |
+| Greedy (always the red hall) | 66% | 75% |
+| Greedy, three legs, walked out clean | 26% | 41% |
+| Careful starts | unchanged (64–74%) | — |
+
+- The Red Hall now costs something: greedy runs lose about 9 points before the first Decon and 15 over three legs. That is with a bot that takes only cautious or standard options and then leaves. They meet 2.2 Nightmare Rooms per run, 3.5 over three legs.
+
+### Remaining TUNE LATER
+
+All of the brief's §17, plus:
+- the recalibrated bands;
+- `nmChance` (60%);
+- the three-action limit;
+- the Mental ward threshold (7);
+- Dead Frame and CASKET-13 numbers;
+- ASHMOUTH heat per transition;
+- how long transmissions last;
+- the Safe Room state odds;
+- whether the Staircase may repeat in a run.
 
 ## What v0.7 adds
 
@@ -472,3 +613,11 @@ The numbers refer to the improvement list given in reply to Prompt 9:
 - 15: split App.tsx
 
 Read as: "noncombat bots" are the friendly machines and structures with no attack. "Build up a threat over turns" covers the Builder Drone, the Unfinished Warframe and the Scrap Shepherd. "Rank of item" did not exist, so restraints were given ranks 1–3.
+
+**Prompt 11 (2026-11-21)**, with one attached brief (uploaded as `a93a3fc7-attachment.txt`)
+
+> Next brief for fixing the lack of red hall risk
+
+Read as: build the attached brief as v0.8, on top of v0.7.
+
+- `docs/briefs/07-nightmare-rooms-conductor-zombie-mechs.txt`

@@ -14,13 +14,13 @@ export function EventPanel({ state, dispatch }: { state: GameState; dispatch: Di
       <h2>{v.title}</h2>
       {state.event?.id.startsWith("r8") && <TeamBar state={state} />}
       {v.screen && (
-        <div className="pscreen" role="img" aria-label={`The Prisoner's screen shows ${v.screen.glyph}. ${v.screen.caption}`}>
+        <div className={`pscreen ${v.screen.anim}`} role="img" aria-label={`${v.screen.who ?? "The Prisoner"}'s screen shows ${v.screen.glyph}. ${v.screen.caption}`}>
           <div className={`pglyph ${v.screen.anim}`}>{v.screen.glyph}</div>
           <div className="pcaption">{v.screen.caption}</div>
         </div>
       )}
       {v.lines.map((l, i) => (
-        <p key={i} className="hook">
+        <p key={i} className={l.startsWith("SIGNAL ANOMALY") ? "hook glitch" : l.startsWith("NIGHTMARE ") ? "hook nmtier" : l.startsWith("CONDUCTOR") ? "hook conductor-line" : "hook"}>
           {l}
         </p>
       ))}

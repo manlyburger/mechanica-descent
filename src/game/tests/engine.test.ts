@@ -36,6 +36,17 @@ function checkInvariants(s: GameState) {
     else expect(s.units.some((u) => u.uid === c.holder && u.holding === c.id), "captive without its holder").toBe(true);
   }
   expect(s.captives.filter((c) => c.holder.startsWith("bound:")).length, "too many bound captives").toBeLessThanOrEqual(RULES.boundMax);
+  // Brief 7: Nightmare consequences stay within their caps and windows; nothing duplicates the owned CASKET-13 or Robobuddy.
+  const live = s.nm.effects.filter((e) => e.status === "pending" || e.status === "active");
+  expect(live.filter((e) => e.type === "zombie" || e.type === "mimic").length, "two Zombie-type consequences").toBeLessThanOrEqual(1);
+  expect(live.filter((e) => e.type === "transmission").length, "two transmissions").toBeLessThanOrEqual(1);
+  expect(live.filter((e) => e.type === "navigation").length, "two navigation disturbances").toBeLessThanOrEqual(1);
+  expect(new Set(s.nm.effects.map((e) => e.id)).size, "effect id reused").toBe(s.nm.effects.length);
+  for (const e of live) expect(e.until, "a live effect past its window").toBeGreaterThanOrEqual(s.room);
+  expect(s.units.filter((u) => u.kind === "casket" && u.side === "friendly" && u.hp > 0).length, "two CASKET-13s").toBeLessThanOrEqual(1);
+  expect(s.units.filter((u) => u.kind === "robobuddy" && u.side === "friendly" && u.hp > 0).length, "a second Robobuddy").toBeLessThanOrEqual(1);
+  expect(new Set(s.nm.seen).size, "a Nightmare Room seen twice").toBe(s.nm.seen.length);
+  if (s.nm.ash) expect(s.nm.ash.heat).toBeLessThanOrEqual(RULES.ashmouthMaxHeat);
   // v0.7: parts and positions.
   for (const u of s.units) {
     expect(new Set(u.partsDown ?? []).size, "part knocked out twice").toBe((u.partsDown ?? []).length);
@@ -129,6 +140,9 @@ function note6(s: GameState) {
   if (s.units.some((u) => u.moved)) brief6.add("v07:shift");
   if (s.captives.some((c) => c.holder.startsWith("bound:"))) brief6.add("v07:bound");
   if (s.events.some((e) => e.includes("in cover behind"))) brief6.add("v07:cover");
+  if (s.nm.room) brief6.add("nm:" + s.nm.room.id);
+  for (const e of s.nm.effects) brief6.add("nmfx:" + e.type + ":" + e.status);
+  if (s.units.some((u) => u.kind === "deadframe")) brief6.add("nm:deadframe");
 }
 
 describe("engine", () => {
@@ -191,7 +205,7 @@ describe("engine", () => {
     for (const id of REWARD_POOL) expect(played.has(id), `card ${id} never played`).toBe(true);
     for (const op of ["equip", "unequip", "assign:foot", "assign:frame", "talk", "treat", "stat", "unlock"]) expect(played.has("pilot:" + op), `pilot op ${op} never used`).toBe(true);
     expect(endings.size, "no run ever ended the pursuit").toBeGreaterThanOrEqual(1);
-    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload", "v07:part", "v07:shift", "v07:bound", "v07:cover"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
+    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload", "v07:part", "v07:shift", "v07:bound", "v07:cover", "nm:choir", "nm:staircase", "nm:reliquary", "nm:wrongbuddy", "nmfx:transmission:active", "nm:deadframe"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
     expect(statuses.has("dead") && (statuses.has("escaped") || statuses.has("withdrawn")), `pilot outcomes seen: ${[...statuses].join(", ")}`).toBe(true);
   });
 

@@ -21,8 +21,8 @@ import { newSeed, Chip, Log } from "./ui/shared";
 import { Crew } from "./ui/Crew";
 
 import "./App.css";
-const KEY = "mechanica-descent-v8";
-const OLD_KEYS = ["mechanica-descent-v7", "mechanica-descent-v6"];
+const KEY = "mechanica-descent-v9";
+const OLD_KEYS = ["mechanica-descent-v8", "mechanica-descent-v7", "mechanica-descent-v6"];
 
 function load(): GameState {
   try {

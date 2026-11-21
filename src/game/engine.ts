@@ -63,6 +63,7 @@ import { magazine, makeGear, prepEnemies, prepEnemy, rescan } from "./gear";
 import { buddyRoomStart, collectPods, openRecoveryScreen, recoveryAvailable, resolveCapsule, settleBuddy } from "./recovery";
 import { onPickPath, resolveStalkers, spawnStalker, stalker, stalkersRoomStart, createStalker } from "./stalkers";
 import { migrateObservation } from "./pilots";
+import { newNm, nmFightStart, nmNavigationToll, nmOp, nmOpBlock, nmPackTweaks, nmRoomStart, nmTryOpen, schedule as nmSchedule, type NmOp, type NmRoomId } from "./nightmare";
 
 export { SAVE_VERSION, createGame } from "./state";
 export { GEAR, gearLine, discoveryChance } from "./gear";
@@ -70,6 +71,7 @@ export * as RC from "./recovery";
 export * as ST from "./stalkers";
 export * as PT from "./parts";
 export * as RS from "./restraint";
+export * as NM from "./nightmare";
 export type { Action, CardInst, GameState, Unit, Wreck, Plan } from "./state";
 export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, tapCommands, type Command } from "./cards";
 export { integrityBand, captiveOf, whyNotRestrainable } from "./capture";
@@ -139,6 +141,7 @@ function startRoom(state: GameState) {
   pilotsRoomStart(state);
   buddyRoomStart(state);
   stalkersRoomStart(state, lastRisky);
+  nmRoomStart(state);
   state.phase = "route";
   log(state, `— Room ${state.room} path —`);
   if (state.room > RULES.deconEvery) addContamination(state, RULES.contamPerLegRoom, "The deep halls get on the rig.");
@@ -220,6 +223,8 @@ function continueHall(state: GameState) {
     } else if (stage === 3) {
       if (deep && !state.seen.yard && chance(state, RULES.yardChance)) return openYard(state);
     } else if (stage === 4) {
+      // Brief 7: a Red Hall may hold a Nightmare Room instead of an ordinary choice.
+      if (state.pathRisky && nmTryOpen(state)) return;
       if (chance(state, RULES.choiceChance)) return rollChoice(state);
     }
   }
@@ -254,6 +259,7 @@ function spawnPack(state: GameState) {
   const odds = riskyOdds(state.room);
   const crazyP = (state.pathRisky ? odds.crazy : 0) + state.extraCrazy;
   const nightP = (state.pathRisky ? odds.nightmare : 0) + state.extraNightmare;
+  nmNavigationToll(state);
   const extra: UnitKind[] = [...state.pendingSpawn];
   state.pendingSpawn = [];
   joinStalker(state);
@@ -315,12 +321,20 @@ function spawnPack(state: GameState) {
     log(state, `${label(u.kind)} in column ${slot + 1}${m.replacement ? `: ${CALLSIGN[role]}'s pilot, in a replacement frame` : ""}.`);
     if (m.kind === "needleback" && !m.replacement) radio(state, "ep1-contact");
   }
+  nmFightStart(state);
+  nmPackTweaks(state);
   // Tracked escapees: they did not get clear.
   const waiting: string[] = [];
   for (const id of state.pendingRunners) {
     const r = state.roster.find((x) => x.id === id);
     const slot = freeEnemySlot(state);
     if (!r || r.custody !== "fleeing") continue;
+    // Already back in a frame on this field: the relay leads you to that, not to a second copy of them.
+    if (state.units.some((u) => u.pilot === id && u.hp > 0)) {
+      r.custody = "free";
+      log(state, `Your Tracking Relay points at the ${label(state.units.find((u) => u.pilot === id)!.kind)}: ${r.name} is already back in a frame.`);
+      continue;
+    }
     if (slot < 0) {
       waiting.push(id);
       continue;
@@ -769,6 +783,7 @@ export function reduce(prev: GameState, action: Action): GameState {
       if (state.phase !== "route") break;
       state.pathRisky = action.risky;
       state.revealNext = false;
+      state.nm.streak = action.risky ? state.nm.streak + 1 : 0;
       onPickPath(state, action.risky);
       log(state, action.risky ? "Risky red hall." : "Normal hall.");
       continueHall(state);
@@ -923,6 +938,9 @@ export function reduce(prev: GameState, action: Action): GameState {
     case "dismiss":
       state.notices.shift();
       break;
+    case "nm":
+      nmOp(state, action.op);
+      break;
     case "qa":
       applyQa(state, action.cmd, action.n, action.s);
       break;
@@ -942,7 +960,7 @@ export function migrate(raw: unknown): GameState | null {
   const s = raw as GameState & { v: number };
   if (!s || typeof s !== "object" || !Array.isArray(s.roster)) return null;
   if (s.v === SAVE_VERSION_) return s;
-  if (s.v !== 6 && s.v !== 7) return null;
+  if (s.v !== 6 && s.v !== 7 && s.v !== 8) return null;
   const st = structuredClone(s) as GameState;
   for (const r of st.roster) migrateObservation(st.seed, r);
   st.pods = st.pods ?? [];
@@ -954,6 +972,7 @@ export function migrate(raw: unknown): GameState | null {
   st.notices = st.notices ?? [];
   st.scanned = st.scanned ?? false;
   st.salvagedThisRoom = st.salvagedThisRoom ?? false; // v8
+  st.nm = st.nm ?? newNm(); // v9
   st.v = SAVE_VERSION_;
   return st;
 }
@@ -983,6 +1002,7 @@ function pilotActions(state: GameState): Action[] {
 export function legalActions(state: GameState): Action[] {
   const out: Action[] = pilotActions(state);
   if (state.notices.length) out.push({ type: "dismiss" });
+  for (const op of ["vent", "abandon", "reorient", "purge"] as NmOp[]) if (!nmOpBlock(state, op)) out.push({ type: "nm", op });
   switch (state.phase) {
     case "title":
     case "win":
@@ -1097,6 +1117,8 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
       for (const m of state.pendingTeam) spawn(state, m.kind, "enemy", freeEnemySlot(state), { pilot: m.pilot, replacement: m.replacement });
       state.pendingTeam = [];
       if (state.pendingStalker) joinStalker(state);
+      nmFightStart(state);
+      nmPackTweaks(state);
       for (const u of living(state, "enemy")) if (is(u, "melee") && u.prox === undefined) u.prox = UNITS[u.kind].startProx ?? 0;
       resetFightState(state);
       state.minesArmed = n === 1 ? state.minesArmed : 0;
@@ -1140,6 +1162,17 @@ function applyQa(state: GameState, cmd: string, n?: number, s?: string) {
     case "parts":
       state.parts += n ?? 3;
       break;
+    case "nmroom": {
+      // Opens a Nightmare Room now (s = room id), as if found in a Red Hall.
+      state.pathRisky = true;
+      nmTryOpen(state, (s as NmRoomId) || "choir");
+      break;
+    }
+    case "nmeffect": {
+      // Schedules a consequence: s = zombie | mimic | transmission | navigation.
+      nmSchedule(state, (s as "zombie") || "zombie", "qa", "DF-QA", "QA consequence");
+      break;
+    }
     case "stalker": {
       // A stalker of the given kind, waiting for the next qa fight (n: distance; 0 = there now).
       const st = createStalker(state, (s as UnitKind) || "hunter");

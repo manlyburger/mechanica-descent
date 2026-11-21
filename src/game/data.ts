@@ -54,7 +54,10 @@ export type UnitKind =
   | "hunter"
   | "tracker"
   | "predator"
-  | "nightmare";
+  | "nightmare"
+  | "deadframe"
+  | "mimic"
+  | "casket";
 
 export interface DepthRow {
   alwaysLight: number;
@@ -324,6 +327,25 @@ export const RULES = {
   // Scrap in a wreck, by what it was. Anything not listed holds 1, as before.
   wreckValue: { widow: 2, kilnheart: 2, bishop: 2, hunter: 2, tracker: 2, predator: 2, nightmare: 2 } as Record<string, number>,
 
+  // ---- brief 7: Nightmare Rooms ----
+  // Threat bands, recalibrated to measured runs (greedy median 5, 90th percentile 13, max seen 29).
+  nmBands: [0, 4, 8, 13, 20] as number[], // Low, Elevated, High, Severe, Extreme
+  nmChance: 0.6, // a Red Hall holds a Nightmare Room this often, while any are left unseen
+  nmTierRooms: [1, 5, 10, 15] as number[], // base tier by room
+  nmMadnessTier: 6, // Madness this high adds a tier (60% of the briefs' 0-10 scale)
+  nmMaxActions: 3,
+  nmForce: "" as "" | "clean" | "complication" | "crisis", // QA and tests only: force every Nightmare outcome
+  nmMentalWard: 7, // a crew pilot with this much Mental takes 1 off Nightmare Madness
+  nmWindow: 2, // room transitions a scheduled consequence waits before it expires
+  nmTransmissionRooms: 2,
+  ashmouthDamage: 9,
+  ashmouthSplash: 3,
+  ashmouthThreat: 2,
+  ashmouthMaxHeat: 4,
+  casketMadness: 2,
+  casketSplash: 2,
+  deadframeHeal: 2,
+
   // ---- v0.7: restraints as capture tools ----
   boundMax: 2, // captives your crew can walk along bound, besides Clampjaws and Pods
   restrainEnergy: 1,
@@ -422,6 +444,9 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   tracker: { name: "Recon Stalker", hp: 8, atk: 2, missiles: 0, size: "medium", tags: ["mechanical", "piloted", "anomaly_eligible"] },
   predator: { name: "Recovery Predator", hp: 10, atk: 2, missiles: 0, armor: 1, size: "heavy", tags: ["mechanical", "piloted", "heavy_machine", "repair_capable", "salvage_sensitive"] },
   nightmare: { name: "Nightmare Stalker", hp: 11, atk: 3, missiles: 0, size: "heavy", startProx: 0, tags: ["mechanical", "heavy_machine", "melee"] },
+  deadframe: { name: "The Dead Frame", hp: 8, atk: 2, missiles: 0, size: "heavy", startProx: 0, tags: ["mechanical", "heavy_machine", "melee"] },
+  mimic: { name: "The Wrong Robobuddy", hp: 4, atk: 1, missiles: 0, size: "small", tags: ["mechanical"] },
+  casket: { name: "CASKET-13", hp: 14, atk: 4, missiles: 0, size: "heavy", tags: ["mechanical", "machine", "heavy_machine", "melee"] },
   prisoner: { name: "The Prisoner", hp: 7, atk: 3, missiles: 0, size: "medium", tags: ["mechanical", "machine"] },
 };
 
@@ -443,6 +468,7 @@ export type CardId =
   // brief 1
   | "BUILDER" | "LEECH" | "HALLWAY" | "BULKHEAD" | "BEACON" | "SERVO" | "CELL"
   | "POSSUM" | "GUNNEST" | "REDMOUTH" | "FOAM" | "REFLEX"
+  | "ASHMOUTH"
   // brief 2
   | "SHEPHERD" | "WALKER" | "JACK" | "WARFRAME" | "BADGE" | "COFFIN" | "RECORDER" | "HAND"
   // brief 3
@@ -496,6 +522,7 @@ export const CARDS: Record<CardId, CardDef> = {
   CRANE: c({ id: "CRANE", name: "Crane Smash", cost: 1, target: "column", cats: ["Attack"], rarity: "starter", melee: true, text: "3 damage across 3 columns. 25% stun. Survivors aim sharper." }),
   BRACE: c({ id: "BRACE", name: "Brace", cost: 1, target: "none", cats: ["Defense"], rarity: "starter", text: `Block ${R.braceBlock} this turn.` }),
   PATCH: c({ id: "PATCH", name: "Patch Weld", cost: 1, target: "none", cats: ["Utility"], rarity: "starter", once: true, tech: true, text: "Heal 2. Once per fight." }),
+  ASHMOUTH: c({ id: "ASHMOUTH", name: "ASHMOUTH CHARGE", cost: 1, target: "enemy", cats: ["Attack", "Nightmare", "Consumable"], rarity: "special", exhaust: true, text: `One shot. ${R.ashmouthDamage} damage; ${R.ashmouthSplash} splash to enemies beside it AND to your unit straight across. +${R.ashmouthThreat} Threat. Carries Heat: critical at ${R.ashmouthMaxHeat}.` }),
   ROCKET: c({ id: "ROCKET", name: "HEAP Rocket", cost: 1, target: "enemy", cats: ["Attack", "Consumable"], rarity: "special", exhaust: true, text: "4 damage, 2 splash, Burn 2. Ammo: gone once fired." }),
   BURST: c({ id: "BURST", name: "Suppressing Burst", cost: 1, target: "none", cats: ["Attack"], rarity: "common", firearm: true, text: "1 damage to every enemy." }),
   WELDER: c({ id: "WELDER", name: "Arc Welder", cost: 1, target: "enemy", cats: ["Attack"], rarity: "common", tech: true, text: "1 damage. Burn 3." }),

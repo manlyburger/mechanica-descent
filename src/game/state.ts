@@ -1,7 +1,8 @@
+import { newNm, type NmState } from "./nightmare";
 import type { CustodyItem } from "./capture";
 import { RULES, type CardId, type ChoiceId, type Phase, type Side, type UnitKind } from "./data";
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export interface Leech {
   cardUid?: string; // absent for temporary leeches
@@ -16,7 +17,7 @@ export interface Leech {
 export interface Plan {
   type:
     | "attack" | "missile" | "purge" | "tear" | "removeLeech" | "scavenge" | "jam" | "shake" | "break" | "hold" | "disabled"
-    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate" | "reload";
+    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate" | "reload" | "reassemble";
   targetUid?: string;
   dmg?: number;
   note?: string;
@@ -121,6 +122,14 @@ export interface Unit {
   partsDown?: string[]; // knocked-out parts: sensors, weapon, actuator
   moved?: boolean; // shifted a column this turn
   restrainTried?: number; // turn of the last restraint attempt on this capsule
+  // brief 7
+  nmEffect?: string; // the scheduled Nightmare consequence this unit is
+  sudden?: boolean; // Dead Frame: may lurch all the way in once
+  suddenUsed?: boolean;
+  repaired?: boolean; // Dead Frame: has used its one Reassemble
+  strikes?: number; // CASKET-13: blows landed, for its every-third splash
+  rampage?: boolean; // CASKET-13: lashes out once at the next fight start
+  ambushed?: boolean;
   // enemy equipment and magazine
   gear?: EnemyGear[];
   gearRolled?: boolean;
@@ -403,6 +412,8 @@ export interface GameState {
   notices: { title: string; lines: string[] }[];
   /** A costly second look for hidden enemy equipment, once per fight. */
   scanned: boolean;
+  /** Brief 7: Nightmare Rooms and what they leave behind. */
+  nm: NmState;
   /** Pilots alive inside wedged wrecks, waiting for someone to cut them out. */
   pinned: { pilot: string; role: UnitKind }[];
   /** Restrained enemies to deal with now that the fight is over. */
@@ -485,6 +496,7 @@ export type Action =
   | { type: "buy"; index: number }
   | { type: "scan" }
   | { type: "dismiss" }
+  | { type: "nm"; op: "vent" | "abandon" | "reorient" | "purge" }
   | { type: "nextRoom" }
   | { type: "qa"; cmd: string; n?: number; s?: string };
 
@@ -575,6 +587,7 @@ export function createGame(seed = 1): GameState {
     routeSnippets: [],
     notices: [],
     scanned: false,
+    nm: newNm(),
     pinned: [],
     custody: [],
     tap: null,

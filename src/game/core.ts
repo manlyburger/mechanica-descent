@@ -25,6 +25,7 @@ import { has as hasGear, laserBonus, missilePod, reload, salvageGear, spendRound
 import { anonEject, buddyDown } from "./recovery";
 import { onStalkerKilled } from "./stalkers";
 import { afterCover, partDown, partHit, rangeSteps } from "./parts";
+import { casketAct, nmOnKilled, nmPlan } from "./nightmare";
 
 /** Scrap a wreck of this kind holds. */
 export function wreckValue(kind: UnitKind): number {
@@ -419,8 +420,9 @@ export function kill(state: GameState, u: Unit, killerUid?: string) {
 
 function killEnemy(state: GameState, u: Unit) {
   state.tally.kills += 1;
-  const noWreck = onEnemyKilled(state, u) || u.kind === "capsule";
+  const noWreck = onEnemyKilled(state, u) || u.kind === "capsule" || u.kind === "mimic";
   onStalkerKilled(state, u);
+  nmOnKilled(state, u);
   state.lastKilled = u.kind === "patient" ? state.lastKilled : u.kind;
   if (u.kind === "infested") {
     log(state, "Infested wreck gives nothing.");
@@ -477,7 +479,8 @@ function killFriendly(state: GameState, u: Unit, killerUid?: string) {
     setPilot(state, u.pilot, "dead");
     return;
   }
-  if (u.kind === "frame") {
+  if (u.kind === "casket") nmOnKilled(state, u);
+  if (u.kind === "frame" || (u.kind === "casket" && u.pilot)) {
     const id = u.pilot;
     const fate = frameLost(state, u);
     if (fate === "dead") setPilot(state, id, "dead");
@@ -664,6 +667,8 @@ export function planEnemy(state: GameState, u: Unit): Plan {
 function planEnemyCore(state: GameState, u: Unit): Plan {
   if ((u.sealed ?? 0) > 0) return u.kind === "zombie" ? { type: "break", note: "breaking the seal" } : { type: "disabled" };
   if ((u.pacified ?? 0) > 0) return { type: "hold", note: "badge accepted" };
+  const nmp = nmPlan(state, u);
+  if (nmp) return nmp;
   const special = planSpecial(state, u);
   if (special) return special;
   if (u.leech) {
@@ -821,6 +826,14 @@ export function enemyAct(state: GameState, u: Unit) {
       }
       break;
     }
+    case "reassemble":
+      if (!u.repaired) {
+        u.repaired = true;
+        u.hp = Math.min(u.maxHp, u.hp + RULES.deadframeHeal);
+        log(state, `The Dead Frame pulls its plating back into place. +${RULES.deadframeHeal} HP (${u.hp}/${u.maxHp}).`);
+        return;
+      }
+      break;
     case "reload":
       if (u.ammo !== undefined) {
         reload(state, u);
@@ -1105,6 +1118,9 @@ export function allyAct(state: GameState, a: Unit) {
       break;
     case "pilot":
       footAct(state, a, fighters(state));
+      break;
+    case "casket":
+      casketAct(state, a, (t, dmg) => machineAttack(state, a, t, dmg), nearestEnemy(state, a));
       break;
     case "shepherd":
       shepherdAct(state, a);

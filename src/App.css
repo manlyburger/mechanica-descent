@@ -420,3 +420,45 @@ h2 { font-size: 17px; font-weight: 600; margin: 0 0 8px; letter-spacing: 0.03em;
   font-size: 11px;
   margin: 0;
 }
+
+/* ---- brief 7: Nightmare Rooms ---- */
+.hook.nmtier {
+  color: #ff8a1f;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.hook.conductor-line {
+  color: #ffb066;
+}
+.glitch {
+  color: #ff9a3c;
+  text-shadow: 1px 0 rgba(255, 60, 0, 0.6), -1px 0 rgba(0, 200, 255, 0.25);
+  animation: glitch-jitter 2.6s infinite steps(1);
+}
+@keyframes glitch-jitter {
+  0%, 92%, 100% { transform: none; opacity: 1; }
+  93% { transform: translateX(1px); opacity: 0.7; }
+  95% { transform: translateX(-2px); }
+  97% { transform: translateX(1px); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glitch { animation: none; }
+}
+.pscreen.conductor {
+  background: #1a0a04;
+  border-color: #ff5a1f;
+}
+.pscreen.conductor .pglyph {
+  color: #ff7a2f;
+  white-space: pre;
+  animation: conductor-sync 3.2s infinite;
+}
+@keyframes conductor-sync {
+  0%, 100% { letter-spacing: 0.2em; }
+  50% { letter-spacing: 0.32em; opacity: 0.85; }
+}
+.row.wrap {
+  flex-wrap: wrap;
+  gap: 6px;
+}

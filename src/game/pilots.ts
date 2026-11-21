@@ -385,7 +385,7 @@ export function assignBlock(state: GameState, r: PilotRec, target: string): Bloc
   if (has(r, "harness")) return { reason: "the Armored Restraint Harness rules out field assignments" };
   if (target === "foot") return null;
   if ((r.rest ?? 0) > 0) return { reason: "still recovering from the pod: no frame this room" };
-  const f = state.units.find((u) => u.uid === target && u.kind === "frame" && u.side === "friendly" && u.hp > 0);
+  const f = state.units.find((u) => u.uid === target && (u.kind === "frame" || u.kind === "casket") && u.side === "friendly" && u.hp > 0);
   if (!f) return { reason: "no such frame" };
   if (r.custody === "captive" && b < 3) return { reason: "a Partially Willing captive takes limited tasks only: scouting and inspection, not a frame" };
   return null;
@@ -399,7 +399,7 @@ export function assign(state: GameState, r: PilotRec, target: string) {
     const prev = rec(state, f.pilot);
     if (prev) prev.assignment = "";
     f.pilot = r.id;
-    log(state, `${r.name} climbs into the ${f.chassis} frame.`);
+    log(state, f.kind === "casket" ? `${r.name} climbs into CASKET-13. The second-occupant line flickers.` : `${r.name} climbs into the ${f.chassis} frame.`);
   } else log(state, `${r.name} will go in on foot.`);
   r.assignment = target;
 }
@@ -495,7 +495,7 @@ function teamPresent(state: GameState): boolean {
 }
 
 export function pilotsFightStart(state: GameState) {
-  state.nightmareFight = state.extension || living(state, "enemy").some((e) => e.kind === "rifleman" || e.kind === "prisoner");
+  state.nightmareFight = state.extension || living(state, "enemy").some((e) => ["rifleman", "prisoner", "deadframe", "mimic", "casket"].includes(e.kind)) || living(state, "friendly").some((u) => u.kind === "casket");
   if (state.nightmareFight && state.roster.some((r) => r.assignment)) log(state, "This is a Nightmare fight. Your pilots' Mental will matter.");
   for (const f of living(state, "friendly").filter((u) => u.kind === "frame")) {
     if (f.faults?.includes("reactor")) deal(state, f, 1, "Frame reactor fault", { noLeech: true });

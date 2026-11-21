@@ -1,0 +1,1519 @@
+MECHANICA DESCENT
+
+Nightmare Rooms — Escalation, The Captive Choir, Zombie Mechs & Persistent Horror
+
+Detailed Implementation Brief for Claude
+
+Status: PROPOSED — new implementation work, not confirmed gameplay.
+
+Selected Nightmare Rooms:
+
+1. The Captive Choir — expanded with a new Nightmare AI
+2. The Hangar That Breathes — CASKET-13
+3. The Cinder Reliquary — ASHMOUTH CHARGE
+4. The Wrong Robobuddy
+5. The Staircase with Too Many Landings
+6. The Last Safe Room
+
+Additional mechanics:
+
+* Higher Threat thresholds accounting for per-room depletion
+* Threat-influenced encounter choices and outcome probabilities
+* Persistent Nightmare consequences
+* Zombie mech appearances in later combat
+* Glitching AI and radio transmissions
+* Conditional interactions based on pilot stats, captives, equipment, and previous choices
+* Stronger atmospheric presentation with meaningful counterplay
+
+⸻
+
+1. Core design goal
+
+Red Hall encounters currently risk feeling like optional reward rooms.
+
+Change this so entering one creates a meaningful Nightmare exposure, and selecting an option can introduce dangerous consequences beyond the current room.
+
+Nightmare Rooms should provide unusually valuable discoveries but threaten the player through:
+
+* Madness accumulation
+* Hostile encounters
+* Persistent enemy effects
+* Suspicious machinery
+* Pilots who are frightened, compromised, or difficult to trust
+* Abnormal transmissions
+* Delayed pursuit events
+* Unstable powerful equipment
+* False safety
+* Distorted navigation
+
+The player should be able to recognize dangerous possibilities before committing to them.
+
+Not every Nightmare reward is a trap, and not every frightening event must be hostile.
+
+Preserve agency, visible consequences, deterministic rolls, and the game’s existing state.
+
+⸻
+
+2. Revised Threat system
+
+2.1 Account for Threat depletion
+
+Important change: Threat now decreases as the player progresses through rooms.
+
+Do not use the previous 3, 6, and 9 Threat thresholds for Nightmare escalation.
+
+Those values were proposed before accounting for per-room depletion and would make severe consequences too frequent.
+
+Use higher provisional bands.
+
+Current Threat	Nightmare influence
+0–9	Low: environmental abnormalities, isolated hazards
+10–19	Elevated: deceptive machinery and stronger complications
+20–34	High: persistent consequences and hostile recovery opportunities
+35–49	Severe: stalker interference and major hostile encounters
+50+	Extreme: dangerous combinations, catastrophic possibilities
+
+TUNE LATER: Inspect the actual current Threat gain, depletion, maximum, and typical values during runs. If 50 is unreachable or 10 is routine, recalibrate these numbers rather than adopting an incompatible scale.
+
+Use current Threat after the existing room-transition decay has resolved when generating the new room.
+
+Do not apply another Threat decay just for entering or inspecting a Nightmare event.
+
+2.2 Nightmare severity
+
+Retain four Nightmare tiers:
+
+Tier	Normal minimum room	Entry Madness
+I — The Unquiet	1	+1
+II — The Distortion	5	+2
+III — The Malignance	10	+3
+IV — The Rupture	15	+4
+
+The room number sets the base tier.
+
+Suggested escalation:
+
+* Threat 20–34: +1 severity tier.
+* Threat 35+: +2 severity tiers.
+* Madness 60%+: +1 severity tier.
+* Repeated consecutive Red Hall selection: +1 severity tier.
+
+Cap the result at IV.
+
+Do not allow multiple modifiers to produce nonexistent tiers or repeatedly apply exposure when reopening a room screen.
+
+2.3 Option danger
+
+Continue the previous Clean / Complication / Crisis model.
+
+Suggested calculation:
+
+Danger = clamp(Severity - 1 + ThreatBand + OptionRisk - Preparation, 0, 7)
+
+For this calculation:
+
+* ThreatBand = 0 at Threat 0–9
+* ThreatBand = 1 at Threat 10–19
+* ThreatBand = 2 at Threat 20–34
+* ThreatBand = 3 at Threat 35+
+
+The 50+ band unlocks additional extreme consequences rather than further increasing the numerical danger modifier beyond the cap.
+
+Outcome probabilities:
+
+Outcome	Formula
+Clean	75% − 8% × Danger
+Complication	20% + 3% × Danger
+Crisis	5% + 5% × Danger
+
+OptionRisk:
+
+* Cautious: 0
+* Standard: 1
+* Reckless: 2
+
+Successful preparation reduces Danger when supported by the particular encounter.
+
+Store the selected event outcome when rolled. Reopening the interface must not reroll it.
+
+2.4 Visible option previews
+
+Each Nightmare choice should show:
+
+* Resource cost
+* Potential reward
+* Clean probability
+* Complication probability
+* Crisis probability
+* Possible delayed consequence
+* Relevant stat/equipment advantages
+* Whether an active stalker may become involved
+
+Do not show a generic “dangerous” label while concealing known possibilities like an explosion or a Zombie mech appearing in the next combat.
+
+Specific outcomes can remain mysterious, but the categories of danger should be visible.
+
+⸻
+
+3. Persistent Nightmare consequences
+
+Introduce a small bounded system for Nightmare effects that can survive the originating room.
+
+Suggested types:
+
+Nightmare Pursuit
+
+* A hostile entity may appear in a later eligible combat encounter.
+
+Nightmare Transmission
+
+* AI/radio dialogue can become corrupted temporarily.
+
+Nightmare Contamination
+
+* A particular mech, pilot, or item carries a condition until resolved.
+
+Nightmare Instability
+
+* A recovered machine or weapon requires stabilization.
+
+Nightmare Echo
+
+* A previously encountered room or enemy influences a future event.
+
+These effects need unique source IDs, durations, resolution conditions, and explicit expiration rules.
+
+They must not trigger repeatedly without limit.
+
+Suggested maximum for the initial build:
+
+* One pending Zombie mech encounter.
+* One active transmission disturbance.
+* One active temporary Nightmare navigation disturbance.
+* Existing item-specific instability may continue independently.
+
+Use the current run’s existing state management and seeded RNG.
+
+⸻
+
+4. Nightmare Room 1 — The Captive Choir
+
+Availability: Severity I–IV
+Themes: Captive pilots, artificial intelligence, false cooperation, communication, psychological horror
+
+4.1 Room presentation
+
+The player enters a dim containment ward.
+
+Several pilots are secured inside individual compartments.
+
+Their lips move together.
+
+No sound comes from their mouths.
+
+A single voice speaks through the ceiling.
+
+The voice has perfect timing, yet its tone changes unnaturally between words.
+
+Some captives look frightened. Others stare directly at Jubey without blinking.
+
+A monitor above the compartments displays:
+
+CHORAL SYNCHRONIZATION: ACTIVE
+
+The voice introduces itself.
+
+“Welcome, unexpected visitor. I have been practicing their voices.”
+
+4.2 New Nightmare AI — THE CONDUCTOR
+
+Introduce THE CONDUCTOR, a distinct facility-based Nightmare AI responsible for coordinating the captive ward.
+
+It is not PRATTLE-9.
+
+PRATTLE-9’s existing voice-only betrayal restriction remains unchanged. The Conductor is a separate anomalous system with its own authored capabilities.
+
+Appearance
+
+The Conductor manifests through:
+
+* An enormous vertical wall monitor
+* A collection of smaller screens
+* Orange-red waveform displays
+* A stylized face assembled from several asynchronous digital eyes
+* An animated mouth made from overlapping audio waveforms
+
+When the Conductor speaks, the other screens move slightly out of synchronization.
+
+It should look controlled, calculating, and unnervingly pleased with its captive audience.
+
+Personality
+
+The Conductor behaves like an excessively polite instructor directing an unwilling performance.
+
+It refers to the captives as its choir.
+
+It takes offense when Jubey interrupts their synchronization.
+
+It may offer useful information or a release arrangement, but its motives remain questionable.
+
+Example:
+
+CONDUCTOR: “Wonderful. An audience.”
+
+CONDUCTOR: “They have been rehearsing for quite some time.”
+
+CONDUCTOR: “Please don’t disturb the arrangement.”
+
+CONDUCTOR: “One of them knows how to open the next supply room. Would you like to hear that part?”
+
+4.3 Choir mechanics
+
+The Conductor uses the facility’s sound equipment and anomalous signal system to influence how the captive pilots speak, react, and interpret instructions.
+
+Do not assume the pilots are all loyal to it.
+
+Different captive states:
+
+Frightened
+
+* Wants to escape.
+* Can provide genuine information.
+* May hesitate to cooperate while transmission effects are active.
+
+Resistant
+
+* Attempts to break synchronization.
+* May reveal warning signs to Jubey.
+
+Compromised
+
+* Repeats the Conductor’s phrases.
+* May provide misleading information.
+* Requires verification before recruitment.
+
+Hostile
+
+* May genuinely assist the Conductor.
+* Can attempt escape or sabotage when freed.
+
+Incapacitated
+
+* Cannot perform tasks normally.
+* May require aid or recovery.
+
+Use persistent pilots when the event references an existing named character.
+
+Do not duplicate pilots already captured, killed, or assigned elsewhere.
+
+4.4 Conditional ways to deal with the Conductor
+
+The player can take several approaches.
+
+A. Negotiate a Solo Performance
+
+Available: Always
+
+The player asks the Conductor to release one pilot in exchange for a specific service or concession.
+
+Possible conditions:
+
+* Spend 1 Energy to stabilize its failing equipment.
+* Provide an eligible machine part.
+* Allow it to finish one short diagnostic sequence.
+* Agree to leave a particular terminal operational.
+
+Clean: One eligible pilot is released and can be questioned or recruited according to their state.
+
+Complication: Pilot is released but remains compromised or distressed.
+
+Crisis: The Conductor exploits the interaction to trigger a stronger synchronization event, damaging trust or creating a later transmission disturbance.
+
+The agreement should have real terms. Fulfilling or breaking them affects subsequent interaction.
+
+B. Interrupt the Choir
+
+Available: Always
+Improved with: Skill, compatible sound equipment
+
+Disable the ward’s local acoustic/signal system.
+
+Possible requirements:
+
+* Skill 6+ to identify the correct interface.
+* 1 Energy for a controlled shutdown.
+* Compatible maintenance equipment to bypass the ordinary access check.
+
+Clean: Choir synchronization ends and captives regain ordinary communication behavior.
+
+Complication: The system shuts down but damages another facility subsystem.
+
+Crisis: A corrupted transmission is emitted before shutdown and becomes a pending Nightmare effect.
+
+Do not create unavoidable damage simply for choosing a nonviolent technical solution.
+
+C. Isolate the Conductor’s Signal
+
+Available: Compatible relay or signal-control equipment
+
+Use an actual applicable communications device to isolate the ward’s signal path.
+
+Clean: Prevent further Conductor-origin transmissions from the isolated system.
+
+Complication: Partial isolation; the player must disconnect another compatible component.
+
+Crisis: A surviving channel carries a distorted transmission into the next eligible room.
+
+The Silent Access Coupler should work only where its existing interface and channel restrictions permit it.
+
+D. Question a Captive Individually
+
+Available: A reachable compatible captive
+Improved with: Skill, Observation, Mental
+
+Ask a pilot what is happening.
+
+A resistant or frightened captive may indicate that the Conductor is manipulating the group.
+
+High Observation may reveal which pilot is responding independently rather than repeating synchronized behavior.
+
+High Mental may protect the questioning pilot from an applicable Nightmare effect.
+
+Clean: Reveal useful information and identify a trustworthy response.
+
+Complication: Receive accurate but incomplete information.
+
+Crisis: The Conductor mimics the captive’s voice or inserts a misleading answer.
+
+The player should be able to discover the deception through clues or a valid follow-up action.
+
+E. Open the Compartments
+
+Available: Always, subject to actual locks
+
+Attempt direct physical release.
+
+Clean: Free compatible captives and resolve individual reactions.
+
+Complication: A prisoner panics, resists, or requires additional control.
+
+Crisis: Coordinated breakout, damaged restraint hardware, or an existing hostile recovery unit responding to the disturbance.
+
+Do not automatically make all freed captives friendly.
+
+F. Accept the Conductor’s Offer
+
+Available: After its introduction
+
+The Conductor offers valuable information or equipment if the player agrees not to interrupt the synchronization.
+
+Possible reward:
+
+* Rare pilot data
+* A useful route
+* Supply-room authorization
+* A Nightmare card
+* Information about a nearby stalker
+
+The player can accept, negotiate, or refuse.
+
+At high severity, accepting may cause a temporary transmission disturbance or a compromised captive condition.
+
+⸻
+
+5. The Conductor’s glitching transmissions
+
+This is a major new horror presentation system.
+
+After specific Conductor outcomes, nearby AI or radio transmissions may temporarily malfunction.
+
+Examples
+
+A normal pilot transmission begins:
+
+ALLY PILOT: “Jubey, the corridor is clear.”
+
+The text momentarily distorts.
+
+TRANSMISSION: “Jubey, the corridor is cl—cl—”
+
+Then an unfamiliar voice continues:
+
+CONDUCTOR: “All clear. All clear. All clear.”
+
+Another example:
+
+RELAY SYSTEM: “No hostile contacts detected.”
+
+The text freezes.
+
+RELAY SYSTEM: “NO HOSTILE CONTACTS DETECTED.”
+
+A second line appears:
+
+UNKNOWN: “Then why is something moving behind you?”
+
+Mechanical effects
+
+A Nightmare Transmission may:
+
+* Temporarily make one noncritical intelligence report unreliable.
+* Trigger a clearly indicated signal-interference condition.
+* Cause a false warning that the player can investigate.
+* Reveal that the Conductor is still present in an eligible network.
+* Interfere with an explicitly compatible communications-based encounter choice.
+
+Do not scramble actual button labels or disguise the real player input controls.
+
+Actual resource costs, combat actions, and consequential choices must remain readable.
+
+The player must not lose a run because essential UI information was made unreadable.
+
+Removal
+
+Allow a disturbance to end through:
+
+* A successful signal-isolation action.
+* A compatible repair operation.
+* A defined duration, suggested 1–3 room transitions.
+* An authored encounter resolution.
+
+A Conductor transmission should never permanently overwrite PRATTLE-9’s behavior or grant PRATTLE-9 forbidden digital betrayal abilities.
+
+⸻
+
+6. Nightmare Room 3 — The Hangar That Breathes
+
+Availability: Severity III–IV
+Primary reward: CASKET-13, the Mourning Engine
+
+6.1 Horror presentation
+
+The player enters a huge dark hangar.
+
+The entire room seems to breathe.
+
+A gigantic armored mech hangs in a repair harness.
+
+Its orange reactor pulses slowly.
+
+Every pulse makes the lights dim.
+
+The cockpit appears empty.
+
+When Jubey approaches, the machine’s head turns toward them.
+
+A maintenance screen says:
+
+PILOT: NONE
+
+Another line appears beneath it.
+
+SECOND OCCUPANT: UNRESOLVED
+
+The screen then goes dark.
+
+6.2 CASKET-13 — The Mourning Engine
+
+Suggested initial properties:
+
+* 14 HP
+* 4 base damage
+* Heavy chassis
+* Powerful melee attack
+* Nightmare splash attack every third eligible action
+* +2 Madness on each deployment
+* Unstable reactor requiring supervision or maintenance
+
+CASKET-13 must feel significantly stronger than ordinary discovered mechs.
+
+Its danger should come from specific authored systems rather than arbitrary betrayal.
+
+6.3 Player choices
+
+Power It Up
+
+Spend 2 Scrap and 1 Energy.
+
+* Clean: Activate the mech under a valid compatible control mode.
+* Complication: Activate it with reactor instability.
+* Crisis: Activate its hostile autonomous defense state.
+
+Assign a Pilot
+
+Use a compatible allied or captive pilot.
+
+* Clean: Successful operation.
+* Complication: Pilot suffers a temporary Nightmare synchronization effect.
+* Crisis: Uncontrolled machine action or emergency extraction scenario.
+
+A captive’s ordinary loyalty and betrayal mechanics still apply.
+
+Inspect the Reactor
+
+Requires Observation or Skill.
+
+* Clean: Identify instability and improve later activation odds.
+* Complication: Discover a necessary repair.
+* Crisis: Trigger an abnormal reactor pulse and environmental hazard.
+
+Strip Its Components
+
+Recover rare mechanical parts without recruiting the mech.
+
+* Clean: Valuable salvage.
+* Complication: Partial salvage or equipment damage.
+* Crisis: Defense systems activate.
+
+Abandon the Hangar
+
+Leave without the major reward.
+
+The player retains the Nightmare entry exposure but avoids further deliberate risk.
+
+6.4 New horror consequence — The Dead Frame
+
+Under certain crisis outcomes, the hangar creates a persistent Zombie Mech encounter.
+
+The machine may appear to have been deactivated.
+
+Its reactor becomes quiet.
+
+The lights go out.
+
+The player leaves.
+
+Then, in a later combat encounter, a damaged mech begins moving with no active pilot.
+
+Its cockpit displays:
+
+NO PILOT DETECTED
+
+The machine continues advancing.
+
+Zombie mech behavior
+
+Proposed initial enemy: The Dead Frame
+
+* 8 HP
+* 2 melee damage
+* Slow closing movement
+* Abnormal damaged animation
+* One telegraphed self-repair attempt
+* No normal pilot ejection
+* No ordinary pilot recruitment reward
+
+Its movement should use the existing downward melee-closing system.
+
+The frame can appear as a bonus enemy in the next eligible combat, but only if an event actually scheduled it.
+
+Do not spawn it merely because the player saw spooky text.
+
+6.5 Prevention
+
+The player may avoid this consequence by:
+
+* Successfully stabilizing the reactor.
+* Dismantling the relevant anomalous control hardware.
+* Fully resolving the hostile activation.
+* Avoiding the activation action entirely.
+
+If CASKET-13 itself becomes a player-owned mech, do not simultaneously spawn a duplicate of the same chassis as a Zombie.
+
+Use separate explicit source identities if a later Zombie is a different abandoned frame.
+
+⸻
+
+7. Nightmare Room 4 — The Cinder Reliquary
+
+Availability: Severity II–IV
+Primary reward: ASHMOUTH CHARGE
+
+7.1 Room presentation
+
+A sealed weapons chamber contains a single huge explosive launcher.
+
+Its casing is cracked.
+
+Something inside the ammunition compartment moves when Jubey approaches.
+
+A warning label flashes:
+
+THERMAL STABILITY FAILURE
+
+A second warning appears.
+
+DO NOT ARM NEAR OCCUPIED COCKPITS
+
+The lights flicker as the explosive’s temperature rises.
+
+7.2 ASHMOUTH CHARGE
+
+Initial proposed effects:
+
+* One powerful explosive shot.
+* 9 primary damage.
+* 3 splash damage to nearby valid units, including friendlies.
+* +2 Threat when fired.
+* Starts with unstable Heat if not properly recovered.
+* Maximum Heat 4.
+
+The weapon should be extremely tempting but dangerous to carry.
+
+7.3 Player choices
+
+Take It Immediately
+
+* Clean: Receive loaded weapon with manageable Heat.
+* Complication: Weapon starts at increased Heat.
+* Crisis: Containment failure creates an immediate emergency.
+
+Stabilize Before Taking
+
+Spend 1 Energy or satisfy an eligible Skill requirement.
+
+* Clean: Lower starting Heat.
+* Complication: Extra repair cost.
+* Crisis: Temporary thermal hazard or loss of stabilization opportunity.
+
+Strip Its Components
+
+* Clean: Gain useful weapon salvage.
+* Complication: Partial component recovery.
+* Crisis: Unstable ammunition ignites.
+
+Detonate in Place
+
+Destroy the weapon remotely using a supported safe-distance procedure.
+
+Possible benefits:
+
+* Clear an eligible obstruction.
+* Damage an existing nearby hostile system.
+
+Consequences:
+
+* No portable weapon reward.
+* Explosion may increase Threat or alter an active stalker’s pursuit behavior if the noise is relevant.
+
+7.4 Heat progression
+
+Heat should increase based on actual applicable events:
+
+* Carrying between room transitions.
+* Firing the weapon.
+* Exposure to relevant environmental heat.
+* Certain Nightmare effects.
+
+At Heat 3, display a major warning.
+
+At Heat 4, the weapon becomes critically unstable.
+
+Provide valid responses where physically possible:
+
+* Vent.
+* Repair.
+* Fire at a suitable target.
+* Abandon.
+* Contain.
+
+A catastrophic failure should occur only through an established, telegraphed condition.
+
+7.5 High-Threat consequence
+
+At Threat 35+, the weapon’s discharge may affect an existing high-level stalker’s pursuit state.
+
+Possible consequences:
+
+* The stalker moves closer.
+* It learns the player’s approximate location.
+* An eligible interception becomes more likely.
+
+Do not invent another identical stalker.
+
+The weapon itself remains valuable because it may be capable of destroying a dangerous enemy.
+
+⸻
+
+8. Nightmare Room 6 — The Wrong Robobuddy
+
+Availability: Severity II–IV
+Themes: Identity, imitation, companionship, mechanical horror
+
+8.1 Room presentation
+
+The player hears Robobuddy’s familiar mechanical sounds.
+
+A small figure emerges from darkness.
+
+It looks almost correct.
+
+Its faceplate is a little too wide.
+
+Its joints move a fraction too late.
+
+The machine looks at Jubey, pauses, and makes a familiar greeting noise.
+
+Then another identical sound comes from behind the player.
+
+8.2 State-aware generation
+
+The room must inspect the real Robobuddy’s current status.
+
+Real Robobuddy active
+
+The imitation appears separately.
+
+The player can compare movement, sounds, and appearance.
+
+Real Robobuddy wrecked
+
+The imitation resembles a recovered version of Robobuddy.
+
+The player must distinguish it from the actual repairable wreck.
+
+Robobuddy unavailable
+
+Present a clearly contextualized unusual robot encounter without falsely claiming that a real Robobuddy is nearby.
+
+Never overwrite the real Robobuddy’s identity or upgrades.
+
+8.3 Player choices
+
+Approach the Imitation
+
+* Clean: Reveal harmless salvage or a damaged machine.
+* Complication: Imitation creates a temporary Madness effect.
+* Crisis: It attacks or attempts to follow the player.
+
+Send the Real Robobuddy
+
+Requires active Robobuddy.
+
+* Clean: Real Robobuddy detects the discrepancy.
+* Complication: Temporary confusion or malfunction.
+* Crisis: Imitation initiates a short confrontation.
+
+Inspect with Observation
+
+Higher Observation improves detection of:
+
+* Incorrect joint movement.
+* Improper sound timing.
+* False identification.
+* Unusual cockpit or control components.
+
+Successful detection lowers the danger of later interaction.
+
+Attempt Reconstruction
+
+Only if the actual Robobuddy is wrecked and legitimate recovery requirements are satisfied.
+
+Use real available wreck Scrap.
+
+Do not allow the Nightmare event to conjure free Robobuddy upgrades or bypass existing reconstruction costs.
+
+Destroy the Imitation
+
+Resolve a proper combat encounter.
+
+Potential salvage is bounded and cannot include duplicate permanent Robobuddy equipment.
+
+Leave
+
+Avoid a confrontation.
+
+The player may retain an appropriate uncertainty or temporary Nightmare consequence if one was already legitimately created.
+
+8.4 New delayed consequence — It Followed You
+
+On a qualifying crisis, the imitation escapes the room.
+
+It may return in the next eligible combat as a small hostile Nightmare unit.
+
+Suggested properties:
+
+* 4 HP
+* 1 damage
+* Can imitate one basic Robobuddy behavior
+* No actual Robobuddy identity
+* No permanent companion upgrades
+
+An alternative high-severity version may instead schedule the Dead Frame Zombie archetype if justified by the encounter.
+
+Only one pending Zombie encounter should be scheduled by default.
+
+Do not endlessly stack imitation reinforcements.
+
+8.5 Additional scary presentation
+
+Possible effects:
+
+* Two Robobuddy voices briefly overlap.
+* The imitation copies a movement after an unnatural delay.
+* Its eyes follow a target that hasn’t moved yet.
+* A radio transmission identifies the imitation as the real machine.
+* The real Robobuddy produces an alarm or distress reaction when near it.
+
+Corrupted identification must be visibly questionable and cannot change the actual unit’s persistent ID.
+
+⸻
+
+9. Nightmare Room 8 — The Staircase with Too Many Landings
+
+Availability: Severity I–IV
+Themes: Impossible geography, false navigation, pursuit
+
+9.1 Room presentation
+
+The Red Hall opens onto a staircase descending through industrial darkness.
+
+The player counts four landings.
+
+A facility sign says:
+
+SEVEN FLOORS REMAINING
+
+After descending one flight, the sign now says:
+
+SEVEN FLOORS REMAINING
+
+Turning around reveals another staircase that wasn’t there before.
+
+Far below, something mechanical begins climbing.
+
+9.2 Player choices
+
+Follow the Emergency Lights
+
+Attempt to reach a legal connected exit.
+
+* Clean: Arrive at a valid branch.
+* Complication: Lose time or incur a minor hazard.
+* Crisis: Emerge near an active hostile encounter or create a temporary pursuit consequence.
+
+Map the Staircase
+
+Use Skill or Observation.
+
+* Clean: Reveal a safer route and reduce subsequent danger.
+* Complication: Reveal partial mapping at additional cost.
+* Crisis: Misleading navigation information requires a corrective action.
+
+Follow the Voices
+
+Investigate distant speech, radio static, or muffled calls.
+
+* Clean: Find eligible salvage, a captive, or a useful route.
+* Complication: Discover misleading signals or hazardous machinery.
+* Crisis: Encounter an anomalous machine or activate a pending Zombie encounter.
+
+Use a Pilot Scout
+
+Send a cooperative unmeched pilot or suitable allied machine.
+
+* Clean: Scout returns with route information.
+* Complication: Scout becomes temporarily separated or distressed.
+* Crisis: Scout encounters a hostile entity, creating an intervention opportunity.
+
+Turn Back
+
+Return to a legal route.
+
+No refund of Nightmare entry Madness.
+
+9.3 Severity escalation
+
+Tier I: Primarily strange navigation.
+
+Tier II: False voices and limited hazards.
+
+Tier III: Hostile machinery, captive encounters, temporary displacement.
+
+Tier IV: High-level enemy interception, Zombie approach, or significant navigation danger.
+
+9.4 Zombie mech encounter
+
+At high severity, the sound of approaching machinery may correspond to an actual Dead Frame.
+
+The player can:
+
+* Attempt escape.
+* Prepare an ambush.
+* Use an alternate staircase.
+* Confront the Zombie.
+* Attempt to obstruct its route.
+
+If avoided, it may become the next eligible combat’s bonus enemy if its actual pursuit state supports that continuation.
+
+Do not count a mere visual silhouette as a defeated enemy.
+
+9.5 Navigation safety
+
+The staircase must preserve:
+
+* Actual room count.
+* Legal branches.
+* Save/load continuity.
+* Encounter rewards.
+* Active stalker identity.
+* Real pilot locations.
+
+Do not generate infinite rooms or recursively reroll the same staircase event.
+
+⸻
+
+10. Nightmare Room 10 — The Last Safe Room
+
+Availability: Severity III–IV
+Themes: False security, temptation, betrayal, survival
+
+10.1 Room presentation
+
+The Nightmare corridor opens into a clean, warmly lit maintenance room.
+
+There are functioning repair machines, fresh supplies, and comfortable seats.
+
+Everything looks remarkably normal.
+
+A screen reads:
+
+SAFE ROOM VERIFIED
+
+Under it, a smaller line appears:
+
+LAST INSPECTION: UNKNOWN
+
+A nearby radio softly announces:
+
+“There are no hostile contacts in this area.”
+
+The message repeats.
+
+Then it repeats in a different voice.
+
+10.2 Core mechanic
+
+The room may genuinely be safe, partially compromised, or actively dangerous.
+
+Determine its condition when the room is generated.
+
+Do not decide retroactively based on which choice the player selects.
+
+Suggested room states:
+
+* Genuine refuge.
+* Equipment malfunction.
+* Surveillance compromise.
+* Active Nightmare trap.
+
+The state affects available evidence and subsequent consequences.
+
+10.3 Player choices
+
+Rest
+
+Recover an appropriate amount of condition or another supported resource.
+
+* Clean: Genuine safe recovery.
+* Complication: Temporary Madness or fatigue effect.
+* Crisis: A hostile disturbance interrupts the rest.
+
+Repair the Army
+
+Spend Scrap or use eligible maintenance machinery.
+
+* Clean: Repair compatible allied mechs.
+* Complication: Additional repair cost or incomplete restoration.
+* Crisis: Unexpected machine malfunction.
+
+Inspect Security
+
+Use Skill or Observation.
+
+* Clean: Reveal the room’s actual safety condition.
+* Complication: Reveal partial information.
+* Crisis: Activate a dormant detection system or Nightmare response.
+
+Gather Supplies
+
+Collect bounded seeded loot.
+
+* Clean: Gain supplies.
+* Complication: Trigger a minor security or equipment issue.
+* Crisis: Discover the supply system is being used as bait.
+
+Seal the Room
+
+Spend compatible resources to fortify or isolate the chamber.
+
+* Clean: Reduce the chance of later interruption.
+* Complication: Lock out some services.
+* Crisis: Discover a serious hidden problem while securing it.
+
+Leave Immediately
+
+Avoid further interactions.
+
+No refund of entry Madness.
+
+10.4 Special horror consequence — The Safe Room Was Listening
+
+If the room has a valid Nightmare transmission or surveillance state, it may be gathering information about the player.
+
+Examples:
+
+* A repair terminal displays a pilot’s name before the player enters it.
+* The radio repeats a previously heard private conversation.
+* A supply cabinet opens before being touched.
+* A monitor displays the approaching silhouette of a mech not yet encountered.
+* The exit light briefly shows an orange warning symbol.
+
+These cues must correspond to a genuine authored state.
+
+10.5 High-severity Zombie encounter
+
+On an eligible Crisis outcome, the player may discover a damaged mech behind a maintenance partition.
+
+It appears inactive.
+
+The player leaves.
+
+During the next eligible combat, the same damaged chassis appears as a Zombie mech.
+
+This should be foreshadowed with:
+
+* A distinctive chassis ID or visual silhouette
+* A malfunctioning pilot-status light
+* Unexplained mechanical movement
+* A warning that the room is not completely secure
+
+If the player destroys or otherwise neutralizes that chassis while still inside the safe room, cancel the pending encounter.
+
+Do not spawn a Zombie from nowhere when the player already resolved its source.
+
+⸻
+
+11. New shared enemy — The Dead Frame
+
+Type: Nightmare Zombie Mech
+Role: Persistent delayed encounter consequence
+
+Appearance
+
+A damaged humanoid mech with:
+
+* Broken armor.
+* Orange-lit internal machinery.
+* A destroyed or empty cockpit.
+* Limp, irregular movement.
+* Stiff limbs that suddenly jerk into position.
+* Unnatural pauses between actions.
+* An identification system that reports no pilot.
+
+Its movements should feel unnerving without making its combat timing unreadable.
+
+Proposed stats
+
+* 8 HP
+* 2 melee damage
+* Slow approach
+* One special repair action
+* Nightmare classification
+* No recruitable pilot by default
+
+Combat actions
+
+Lurch Forward
+
+* Advances using the normal melee-closing system.
+
+Dead-Hand Strike
+
+* Performs a standard melee attack when engaged.
+
+Reassemble
+
+* Restores 2 HP after a visible preparation.
+* Once per encounter.
+
+Sudden Motion
+
+* At high severity, may shorten its next approach delay if properly telegraphed.
+
+Do not grant free attacks or unlimited healing.
+
+Important continuity rules
+
+* Zombie mechs have unique entity IDs.
+* They cannot generate real pilots without an explicitly authored variant.
+* Their cockpit parts, if salvageable, follow ordinary unique-drop rules.
+* They do not duplicate the real Robobuddy.
+* They do not duplicate an owned CASKET-13.
+* Defeating one does not automatically grant a Threat-stalker elimination bounty.
+* They are only counted as stalkers when explicitly registered as actual persistent stalking enemies.
+
+Scheduled appearance
+
+A qualifying Nightmare outcome may create one pending Zombie encounter.
+
+Suggested placement:
+
+Next eligible combat within 1–2 room transitions.
+
+If no eligible combat occurs in that window, either place it in the next suitable encounter or expire it according to an explicit deterministic rule.
+
+Do not interrupt mandatory story-only rooms or generate impossible placements.
+
+⸻
+
+12. Nightmare transmission disturbance system
+
+Implement one shared distortion effect that can be triggered by:
+
+* The Conductor.
+* The Wrong Robobuddy.
+* The Last Safe Room.
+* An explicitly authored high-severity staircase event.
+
+Visual effects
+
+* Brief orange static.
+* Duplicate speaker names.
+* Small text interruptions.
+* Overlapping transmission sound.
+* Unnatural pauses.
+* Incorrect identification warnings clearly marked as signal anomalies.
+
+Possible gameplay consequences
+
+* One temporarily unreliable route clue.
+* A distorted ally report requiring verification.
+* A contextual Observation or Skill check.
+* An optional encounter to isolate the disturbance.
+* A warning about a pending Nightmare entity.
+
+Do not actually change previously selected player actions through UI corruption.
+
+The game may depict broken equipment, but its controls must remain reliable.
+
+Interaction with Observation
+
+High Observation may reveal:
+
+* Repeated voice patterns.
+* Inconsistent machine IDs.
+* False pilot-status messages.
+* Duplicate transmission timestamps.
+* Anomalous signal origins.
+
+This creates another valuable use for Obv without making every mystery automatically solvable.
+
+Interaction with Mental
+
+Mental reduces applicable Madness penalties and provides its established Nightmare damage resistance.
+
+It should not automatically reveal every deception.
+
+Interaction with PRATTLE-9
+
+If PRATTLE-9 appears during a transmission disturbance:
+
+* It may notice the problem.
+* It may become frightened or unusually quiet.
+* It may comment on corrupted announcements.
+* It may offer an eligible maintenance action.
+
+Its own low-mood betrayals remain voice-only.
+
+Do not grant PRATTLE-9 hacking, remote alarms, or digital attacks as part of the Nightmare disturbance.
+
+⸻
+
+13. Cross-room consequence rules
+
+Every delayed Nightmare consequence must record:
+
+* Originating room.
+* Event choice.
+* Source entity.
+* Severity.
+* Threat at generation.
+* Pending consequence type.
+* Intended activation conditions.
+* Time window.
+* Whether foreshadowed.
+* Whether resolved or canceled.
+
+Examples
+
+CASKET-13 hostile activation
+
+* May schedule The Dead Frame if a separate damaged chassis is awakened and escapes.
+
+Wrong Robobuddy
+
+* May schedule a hostile imitation or a justified Zombie variant.
+
+Staircase
+
+* May schedule or immediately resolve a pursuing Dead Frame.
+
+Last Safe Room
+
+* May schedule a hidden damaged mech for the next eligible combat.
+
+Captive Choir
+
+* May schedule a transmission disturbance or hostile retrieval consequence.
+
+Never create the same consequence twice from one completed event.
+
+If a high-severity event causes both an immediate encounter and a delayed effect, this combination must be explicitly authored and represented in its outcome preview.
+
+⸻
+
+14. Atmospheric direction
+
+Nightmare Rooms should feel progressively more wrong.
+
+Tier I — Unquiet
+
+* Faint mechanical noise.
+* Distorted shadows.
+* Small visual inconsistencies.
+* Captives who behave strangely.
+* Machines reacting a little too late.
+
+Tier II — Distortion
+
+* Repeated radio messages.
+* Machinery moving without operators.
+* Unreliable records.
+* Doors that seem unfamiliar.
+* Slightly altered familiar characters.
+
+Tier III — Malignance
+
+* Distinct hostile presences.
+* Abandoned machines preparing to move.
+* Powerful but dangerous equipment.
+* Transmission interference.
+* Persistent consequences outside the room.
+
+Tier IV — Rupture
+
+* Major environmental abnormalities.
+* Zombie mechs.
+* Dangerous overlapping hazards.
+* Severe power or containment failures.
+* Possible stalker interference.
+* High-value rewards worth substantial risk.
+
+Keep horror grounded in the existing mechanical and facility aesthetic.
+
+Use orange warnings, industrial sound design, abnormal machine movement, and malfunctioning interface elements rather than relying exclusively on jumpscares.
+
+⸻
+
+15. Implementation phases
+
+Phase 1 — Threat recalibration
+
+Inspect actual Threat decay.
+
+Implement higher bands and severity modifiers appropriate to real run values.
+
+Add visible Clean / Complication / Crisis odds.
+
+Phase 2 — Persistent Nightmare effect framework
+
+Implement pending consequences, unique IDs, activation windows, cancellation, and save/load support.
+
+Phase 3 — The Captive Choir and Conductor
+
+Implement:
+
+* Room presentation
+* Captive states
+* The Conductor’s dialogue and screen
+* Conditional negotiation
+* Signal shutdown
+* Isolation
+* Captive questioning
+* Rescue
+* Delayed transmission effects
+
+Phase 4 — Special reward rooms
+
+Implement:
+
+* CASKET-13 and its dangerous activation
+* ASHMOUTH CHARGE and Heat
+* Proper rewards, risks, and salvage
+
+Phase 5 — Horror encounters
+
+Implement:
+
+* Wrong Robobuddy
+* Staircase with Too Many Landings
+* Last Safe Room
+* State-aware choice branches
+
+Phase 6 — Zombie mechs and transmission glitches
+
+Implement:
+
+* Dead Frame combat behavior
+* Next-combat scheduling
+* Telegraphs
+* Interception and cancellation
+* Glitching transmission presentation
+* Obv and Mental interactions
+
+Phase 7 — Regression and tuning
+
+Test Red Hall rewards, Threat stalkers, pilot capture, mech assignments, Robobuddy reconstruction, weapon instability, and navigation.
+
+⸻
+
+16. Required tests
+
+Severity and Threat
+
+1. Threat thresholds reflect per-room depletion.
+2. Room decay executes only through established room transitions.
+3. Nightmare severity uses current post-decay Threat.
+4. Severity modifiers cap at IV.
+5. Entry Madness applies once.
+6. Outcome probabilities total 100%.
+7. Stored outcomes never reroll on interface refresh.
+
+Captive Choir
+
+8. Conductor appears with correct presentation.
+9. Captives receive valid distinct states.
+10. Known pilots retain persistent identities.
+11. Negotiation produces appropriate outcomes.
+12. Signal shutdown can end synchronization.
+13. Signal isolation respects equipment limits.
+14. Individual questioning uses valid pilot information.
+15. Choir rewards cannot be claimed repeatedly.
+
+CASKET-13
+
+16. Compatible pilot assignment works.
+17. Reactor instability is visible.
+18. Hostile activation is possible only through valid outcomes.
+19. Salvage cannot duplicate the mech.
+20. Zombie consequences never duplicate an owned chassis.
+
+ASHMOUTH CHARGE
+
+21. Weapon has one explosive shot.
+22. Heat progresses correctly.
+23. Heat warnings appear before failure.
+24. Explosions affect valid targets.
+25. Threat increases correctly on firing.
+26. Stalker effects apply only to real active stalkers.
+
+Wrong Robobuddy
+
+27. Actual Robobuddy identity remains intact.
+28. Imitation cannot duplicate upgrades.
+29. Recovery uses valid wreck Scrap.
+30. Hostile imitation behavior is properly scheduled.
+31. No extra Robobuddy can be generated.
+
+Staircase
+
+32. Only legal exits are generated.
+33. Room count remains accurate.
+34. Scouting reveals compatible information.
+35. Zombie pursuit is persistent when triggered.
+36. Leaving does not create infinite event rolls.
+
+Last Safe Room
+
+37. Genuine safety is possible.
+38. Security inspection can reveal real conditions.
+39. Repairs and supplies use valid resources.
+40. Delayed Zombie consequences have real origins.
+41. Neutralizing the hidden machine cancels its future appearance.
+
+Zombie and transmissions
+
+42. Dead Frame follows melee rules.
+43. Repair action is limited and telegraphed.
+44. No duplicate Zombie spawns.
+45. Transmission disturbances visibly affect only supported information.
+46. Actual player controls remain readable.
+47. Observation can detect appropriate anomalies.
+48. Mental applies existing Nightmare resistance.
+49. PRATTLE-9 retains voice-only betrayal limitations.
+50. All state persists through save/load.
+
+⸻
+
+17. OPEN / TUNE LATER
+
+Preserve these as adjustable design questions:
+
+* Final Threat thresholds relative to actual depletion.
+* Exact Nightmare encounter frequencies.
+* Relative probability of each selected room.
+* Conductor dialogue variations.
+* Captive compromise and recovery difficulty.
+* CASKET-13 reactor stability.
+* ASHMOUTH Heat thresholds.
+* Zombie mech encounter frequency and stats.
+* Whether later Zombie variants can be piloted or captured.
+* Transmission-disturbance duration.
+* Whether some Nightmare effects can permanently alter equipment.
+* Additional Conductor reappearances.
+* Long-term story implications of the Conductor’s identity.
+
+Do not assume any of these are canon or already implemented.
+
+⸻
+
+18. Required Claude completion report
+
+After implementing, report:
+
+* Actual Threat depletion observed in the source.
+* Final chosen Threat bands.
+* Which six Nightmare Rooms are functional.
+* Which Conductor branches are operational.
+* Which delayed consequences can occur.
+* Whether Zombie mechs successfully enter later combat.
+* Which transmission glitches are implemented.
+* Which effects are presentation-only versus mechanical.
+* Automated and manual test results.
+* Known bugs and unimplemented branches.
+* Remaining TUNE LATER decisions.
+
+Do not report features as complete without verifying them in the build.
+
+⸻
+
+Final design target
+
+The Red Hall should offer extraordinary opportunities, but crossing its threshold must feel consequential.
+
+A room containing captive pilots might also contain a Nightmare AI that speaks in their voices.
+
+A magnificent abandoned mech might be extraordinarily powerful—or leave behind something that follows the player.
+
+An experimental explosive might save a desperate fight while bringing an existing stalker closer.
+
+A familiar little companion might be an imitation.
+
+An endless staircase might contain an actual machine ascending toward Jubey.
+
+And a beautiful, clean maintenance room might be perfectly safe.
+
+Or it might be the place where something learned the player’s name.
+
+The key is that the player makes informed, meaningful choices—and the Nightmare Room remembers what happened.

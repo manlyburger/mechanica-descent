@@ -1,6 +1,7 @@
 // Playing cards and issuing commands to units.
 
 import { canShift, shift } from "./parts";
+import { fireAsh } from "./nightmare";
 import { capsuleOdds, restrainCapsule, restrainCommandBlock, restrainTarget, restraintsInStore } from "./restraint";
 import { resolveCapsule } from "./recovery";
 import { ITEMS } from "./pilots-data";
@@ -234,6 +235,9 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
       servoMalfunction(state, bonus > 0);
       break;
     }
+    case "ASHMOUTH":
+      fireAsh(state, target!);
+      break;
     case "ROCKET": {
       const t = target!;
       const splash = living(state, "enemy").filter((u) => Math.abs(u.slot - t.slot) === 1);
@@ -508,6 +512,7 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
     default:
       break;
   }
+  if (u.kind === "casket") add("vent", "Vent the reactor", `1 Energy: heat ${u.heat ?? 0} → ${Math.max(0, (u.heat ?? 0) - 2)}. It skips its blow this turn.`, (u.heat ?? 0) > 0 && en(1));
   // Moving along your own line: into cover, out of a splash, closer or further across.
   for (const dir of [-1, 1] as const) {
     const why = canShift(state, u, dir);
@@ -565,6 +570,12 @@ export function runCommand(state: GameState, uidOf: string, cmd: string, targetI
     return;
   }
   switch (cmd) {
+    case "vent":
+      payEnergy(state, 1, true);
+      u.heat = Math.max(0, (u.heat ?? 0) - 2);
+      u.acted = true;
+      log(state, `CASKET-13 vents. Reactor heat ${u.heat}.`);
+      break;
     case "shift-left":
     case "shift-right":
       if (u.kind === "jubey") payEnergy(state, RULES.jubeyMoveEnergy, true);

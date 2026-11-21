@@ -180,6 +180,12 @@ export function botMove(s: GameState, style: BotStyle): Action {
       return { type: "pickPath", risky: style.risky };
     case "event": {
       const view = eventView(s)!;
+      if (s.event!.id === "nightmare") {
+        // One careful look, then out: the cautious option if there is one, else a standard one.
+        const ok = view.options.filter((o) => o.enabled && o.id !== "leave");
+        const pickOne = s.nm.room && s.nm.room.actions === 0 ? (ok.find((o) => o.detail.startsWith("Cautious")) ?? ok.find((o) => o.detail.startsWith("Standard"))) : undefined;
+        return { type: "event", option: pickOne?.id ?? "leave" };
+      }
       if (s.event!.id === "recovery") {
         // Rebuild the buddy first, then pods (secure, recruit, else let go), then frames.
         const ok = view.options.filter((o) => o.enabled).map((o) => o.id);

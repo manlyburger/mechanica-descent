@@ -14,7 +14,7 @@ export const SHORT: Record<UnitKind, string> = {
   bulkhead: "Bulkhead", beacon: "Beacon", shepherd: "Shepherd", walker: "Walker", jack: "Panic Jack", warframe: "Warframe",
   clampjaw: "Clampjaw", pod: "Pod", needleback: "Courier", latchback: "Brawler", widow: "Widow", kilnheart: "Breaker",
   bishop: "Bishop", capsule: "Capsule", relay: "Relay", prisoner: "Prisoner", frame: "Frame", pilot: "Pilot",
-  hunter: "Hunter", tracker: "Recon", predator: "Predator", nightmare: "Nightmare",
+  hunter: "Hunter", tracker: "Recon", predator: "Predator", nightmare: "Nightmare", deadframe: "Dead Frame", mimic: "Imitation", casket: "CASKET-13",
 };
 
 export function Chip({ k, v, hot }: { k: string; v: string; hot?: boolean }) {
@@ -42,6 +42,7 @@ export function CardView({ card, selected, dim, big, onClick, disabled }: { card
 
 /** Radio chatter, sound captions and debug lines: shown only when asked for. */
 export function isFlavor(line: string): boolean {
+  if (line.startsWith("SIGNAL ANOMALY") || line.startsWith("CONDUCTOR")) return false; // Nightmare transmissions are information, not chatter
   return line.includes("“") || line.startsWith("[") || line.startsWith("QA ");
 }
 const isMarker = (line: string) => line.startsWith("— ");

@@ -280,12 +280,17 @@ export function actSpecial(state: GameState, u: Unit, plan: Plan): boolean {
     }
     case "approach":
     case "rush": {
-      const limp = u.partsDown?.includes("actuator");
+      const sudden = u.kind === "deadframe" && plan.type === "rush";
+      const limp = u.partsDown?.includes("actuator") || (u.kind === "deadframe" && !sudden);
       if (limp && state.turn % 2 === 1) {
-        log(state, `${name} drags its damaged actuator and does not close.`);
+        log(state, u.kind === "deadframe" ? `${name} stands perfectly still. Then its head turns. It does not close.` : `${name} drags its damaged actuator and does not close.`);
         return true;
       }
-      u.prox = plan.type === "rush" && !limp ? RULES.proxEngaged : Math.min(RULES.proxEngaged, (u.prox ?? 0) + 1);
+      if (sudden) {
+        u.suddenUsed = true;
+        log(state, `${name} jerks forward all at once.`);
+      }
+      u.prox = plan.type === "rush" && (!limp || sudden) ? RULES.proxEngaged : Math.min(RULES.proxEngaged, (u.prox ?? 0) + 1);
       log(state, `${name} ${plan.type === "rush" ? "charges" : "closes"}: ${PROX_NAMES[u.prox]}.`);
       if (u.kind === "kilnheart") {
         const cover = living(state, "friendly").find((f) => f.kind === "bulkhead");

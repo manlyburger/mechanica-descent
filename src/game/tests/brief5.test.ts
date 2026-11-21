@@ -4,7 +4,7 @@ import { BAND_NAMES, gainXp, accuracy, assignBlock, band, cannotEquip, damageRes
 import { ITEMS, PR } from "../pilots-data";
 import type { PilotRec } from "../state";
 import { setPilot } from "../team";
-import { choose, cmd, end, fight, findSeed, foe, j, qa, run, said, sane } from "./helpers";
+import { choose, cmd, end, fight, findSeed, foe, j, qa, run, said, sane, withRules } from "./helpers";
 
 const P = (s: GameState, id: string) => rec(s, id)!;
 const newest = (s: GameState) => s.roster[s.roster.length - 1];
@@ -215,7 +215,7 @@ describe("stats and levels", () => {
       Object.assign(z, { stunned: 0, prox: 2, plan: { type: "attack", targetUid: u.uid, dmg: 2 } });
       s.accModEnemy = 9;
       for (const e of s.units.filter((x) => x.kind === "rifleman")) e.stunned = 99;
-      s = end(s);
+      s = withRules({ partHitChance: 0 }, () => end(s)); // a knocked-out weapon would change the hit itself
       const taken = 30 - s.units.find((x) => x.kind === "pilot")!.hp;
       expect(taken === 1 || taken === 2).toBe(true);
       if (taken === 1) blocked++;

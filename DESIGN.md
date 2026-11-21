@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.6.1)
+# Mechanica Descent — build notes (v0.7)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -22,9 +22,92 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/game/pilot-events.ts` | Empty-Cockpit Mech, Suspicious Cargo Above, Fleeing Pilot |
 | `src/game/gear.ts` | Enemy equipment cards, enemy magazines, Observation checks, equipment salvage |
 | `src/game/recovery.ts` | The post-combat recovery screen: escape pods and their occupants, Robobuddy reconstruction, abandoned frames |
+| `src/game/parts.ts` | Part damage on enemy machines, cover, range across the lane, shifting along your own line |
+| `src/game/restraint.ts` | Restraint items as capture tools: odds, binding, bound captives |
+| `src/App.tsx` | App shell: save/load, header, which screen is showing |
+| `src/ui/` | One file per screen: `Battle`, `Token` (unit tiles and status), `Route`, `EventPanel`, `Between` (salvage, reward, Decon, Tech Stop, end), `Start`, `Help`, `Crew`, and `shared` (cards, chips, the log) |
 | `src/game/stalkers.ts` | Threat stalkers: creation, level, movement, interception, elimination, orange route snippets |
-| `src/Crew.tsx` | The crew panel: roster, equipment screen, stats, loyalty, assignment barrier |
-| `src/game/tests/` | 314 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/tests/` | 335 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.7 adds
+
+Prompt 10: fewer shots at non-combat bots; items 2, 3, 7, 9, 10 and 15 from the improvement list; and restraint items as capture tools.
+
+### Enemies look past non-combat bots
+
+- Random picks are weighted. Lil Robobuddy, Machine Possum, Clampjaw, Containment Pod and Bulkhead count 0.1 against 1 for anything that fights (`noncombatWeight`). Next to Jubey alone, each takes about 5% of random picks, down from about 19%.
+- The tactical quarter of picks never chooses one of them while anything else is in reach.
+- **Bots that build toward a threat over turns** are excluded or reduced less. The Builder Drone (timed builds) and the Unfinished Warframe (startup) keep full weight. The Scrap Shepherd, which piles Scrap to feed the Warframe, counts 0.6 (`buildingWeight`).
+- **Unchanged:** ally mechs, frames, walkers, pilots on foot and every fighting bot are still picked uniformly. The Threat Beacon is still an absolute decoy.
+
+### 2. Threat drains per room, not per turn
+
+- The point-per-turn drain inside fights is gone. Entering a room after one where you stripped nothing takes Threat down by 1 (`threatDrainPerRoom`), with a log line.
+- The drain happens before a new stalker is checked for, so a stalker needs Threat 5 after the drain.
+
+### 3. Enemy equipment from room 3
+
+- Rooms 3–4: 10% for one item (`gearDepth`). Rooms 1–2 stay clean. Room 5 on is unchanged.
+
+### 7. The log, grouped by turn
+
+- A "— Turn N —" marker starts each turn. The log shows the current turn open and folds earlier turns and room paths, each with its line count.
+- **Chatter** (radio dialogue in curly quotes, bracketed sound captions, QA lines) is hidden behind a "Show chatter (N)" toggle.
+
+### 9. Part damage
+
+- A hit of 2 or more after armor on an enemy machine that survives has a 20% chance to knock out one intact part, 40% from 4 damage (`partHitChance`, `partHitMin`, `partHitBig`). Each part goes once.
+- **Sensors:** one step worse aim, and a Laser Sight stops working.
+- **Weapon:** −1 damage (never below 1), and an Extended Magazine no longer feeds.
+- **Actuator:** the shoulder Missile Pod is dead, and a melee unit closes only every other turn and cannot charge.
+- Shown on the unit sheet: SENSORS DOWN, WEAPON DAMAGED, ACTUATOR DAMAGED.
+- Applies to enemy machines that attack. Not to capsules, relays, drones, riflemen or the Prisoner.
+
+### 10. Positioning and cover
+
+- **Cover.** A Bulkhead or Containment Pod covers the friendly units in the columns beside it. A Command Relay does the same for enemies. Cover takes 1 off each direct-fire hit: machine guns, slugs, bursts, rockets, enemy and ally gunfire, pilot sidearms. Melee, lock-on missiles, the Missile Pod, thrown items and splash ignore it. The tile shows "in cover (Bulkhead): −1 per shot".
+- **Range.** Enemy direct fire at a target four or more columns across loses a step of aim.
+- **Shifting.** Any ally that can move gets Shift left / Shift right, free, once a turn. Jubey pays 1 Energy (`jubeyMoveEnergy`). Bulkheads, Pods, Beacons, Gun Nests and a booting Warframe stay put.
+- Enemies do not reposition. That is the next step if positioning should matter more.
+
+### 15. App.tsx split
+
+- `App.tsx` is down to the shell: save/load, header and screen choice. Each screen is its own file in `src/ui/`.
+- The split was mechanical: no behavior change, and the screenshots match.
+
+### Restraint items as capture tools
+
+- **Ranks:** Industrial Lockbands and Magnetic Ankle Locks are rank 1, Reinforced Cuffs and Remote Release Shackles rank 2, the Armored Restraint Harness rank 3. Gags and relays cannot capture.
+- **In a fight:** tap a grounded escape capsule or a pilot running on foot. A "Restrain: (item)" command appears for each restraint you carry, with its odds. It costs 1 Energy, one try per target per turn. Flying pods cannot be reached.
+  - On a success the pilot is bound.
+  - On a miss you keep the item, and they bolt next turn.
+  - An anonymous capsule settles its occupant on the first try. An empty one says so.
+- **On the recovery screen:** "Restrain with (item)" sits beside Secure for an opened pod.
+  - A miss on a hostile or frightened pilot lets them run.
+  - A miss on anyone else just rules that item out for them.
+- **Odds** (clamped 5–95%): 25% + 15% × rank − 3% × Endurance − 3% × (level − 1) + 5% × (loyalty band − 1).
+  - Cooperative +20%, frightened +5%, hostile −15%, incapacitated +35%, subdued +30%.
+  - Still sealed in a capsule −10%; a damaged capsule or a pilot at 1 HP +10%.
+  - Example: a level 2 cooperative pilot with Endurance 4, in Cuffs, is about 65%.
+- **Bound captives** need no Clampjaw or Pod. The crew walks them, at most 2 (`boundMax`), wearing the item that bound them. That item works as normal captive equipment from then on: strain, harshness, loyalty. Capture confiscates their own kit first, as before.
+
+### Fixed along the way
+
+- A pilot handed back in Bishop's exchange no longer becomes a tracked runner because of a Tracking Relay. The fuzz test found it once bound captives made the exchange easier to reach.
+
+### Balance, as measured
+
+| Bot | Reached first Decon | v0.6.1 | v0.5 |
+| --- | --- | --- | --- |
+| Careful, Shabby Lootbox | 65% | 68% | 61% |
+| Careful, AM Mine | 71% | 73% | 68% |
+| Careful, Lil Robobuddy | 74% | 81% | 66% |
+| Careful, old cards only | 68% | 78% | 64% |
+| Greedy | 75% | 79% | 71% |
+
+- The three starts are close again: Robobuddy is 9 points above Lootbox, not 13. It is downed about 0.1 times a run instead of 0.8, so it collects its free wreck most fights rather than soaking shots.
+- Greedy runs are now stalked 71% of the time (21% in v0.6), and three-leg greedy runs eliminate 0.33 stalkers a run. Careful runs still almost never reach Threat 5, because they strip little.
+- The sim bot does not shift, take cover or use restraints. Those systems are covered by tests and the fuzz run, not the sim numbers.
 
 ## What v0.6.1 changes
 
@@ -373,3 +456,19 @@ Read as: build the attached brief as v0.6. With v0.4, v0.5 and v0.6 all done, th
 > Before doing so make a list of improvement options to the game
 
 Read as: it sits out two full rooms after a rebuild. The improvement list was given in the conversation, not stored here.
+
+**Prompt 10 (2026-11-21)**
+
+> Reduce enemies targeting noncombat bots significantly. Don’t change them randomly targeting ally mechs, etc, and exclude or reduce the effect for any bots that build up a threat over turns.
+> Do 2,3,7,9,10,15
+> Make restraint items usable to capture, with chance of success based on target pilot and rank of item.
+
+The numbers refer to the improvement list given in reply to Prompt 9:
+- 2: Threat drain per room
+- 3: early enemy equipment
+- 7: grouped battle log
+- 9: part damage
+- 10: positioning and cover
+- 15: split App.tsx
+
+Read as: "noncombat bots" are the friendly machines and structures with no attack. "Build up a threat over turns" covers the Builder Drone, the Unfinished Warframe and the Scrap Shepherd. "Rank of item" did not exist, so restraints were given ranks 1–3.

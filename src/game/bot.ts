@@ -183,7 +183,7 @@ export function botMove(s: GameState, style: BotStyle): Action {
       if (s.event!.id === "recovery") {
         // Rebuild the buddy first, then pods (secure, recruit, else let go), then frames.
         const ok = view.options.filter((o) => o.enabled).map((o) => o.id);
-        const want = ["subdue", "secure", "recruit", "release"].find((x) => ok.includes(x)) ?? ok.find((x) => x.startsWith("rebuild:")) ?? ok.find((x) => x.startsWith("open:")) ?? ok.find((x) => x.startsWith("claim:")) ?? "done";
+        const want = ["subdue", "secure"].find((x) => ok.includes(x)) ?? ok.find((x) => x.startsWith("restrain:")) ?? ["recruit", "release"].find((x) => ok.includes(x)) ?? ok.find((x) => x.startsWith("rebuild:")) ?? ok.find((x) => x.startsWith("open:")) ?? ok.find((x) => x.startsWith("claim:")) ?? "done";
         return { type: "event", option: want };
       }
       const order = (style.bold ? BOLD : SAFE)[s.event!.id] ?? [];

@@ -3,7 +3,7 @@
 // group of the brief's 46 validation scenarios, numbered to match.
 
 import { describe, expect, it } from "vitest";
-import { createGame, eventView, legalActions, migrate, pickTargetForTest, reduce, type GameState, type Unit } from "../engine";
+import { SAVE_VERSION, createGame, eventView, legalActions, migrate, pickTargetForTest, reduce, type GameState, type Unit } from "../engine";
 import { discoveryChance, magazine, makeGear, prepEnemy } from "../gear";
 import { observation, partyObservation, rec, statOf } from "../pilots";
 import { POOLS, createStalker, defeat, expectedLevel, rating, reductionFor, resolveStalkers, stalkerStats } from "../stalkers";
@@ -200,8 +200,12 @@ describe("enemy equipment", () => {
     }
     return { rate: equipped / n, total };
   };
-  it("9. rooms 1–4 roll no random equipment", () => {
-    for (const room of [1, 2, 3, 4]) expect(sample(room).rate).toBe(0);
+  it("9. rooms 1–2 roll no random equipment; rooms 3–4 rarely (v0.7)", () => {
+    for (const room of [1, 2]) expect(sample(room).rate).toBe(0);
+    for (const room of [3, 4]) {
+      expect(sample(room).rate).toBeGreaterThan(0.04);
+      expect(sample(room).rate).toBeLessThan(0.17);
+    }
   });
   it("10. deeper rooms equip at the configured rate, with at most the configured count", () => {
     expect(sample(6).rate).toBeGreaterThan(0.17);
@@ -317,7 +321,7 @@ describe("Observation", () => {
     for (const k of ["pods", "buddy", "stalkers", "pendingStalker", "routeSnippets", "notices", "scanned"]) delete (old as unknown as Record<string, unknown>)[k];
     const a = migrate(sane(old))!;
     const b = migrate(sane(old))!;
-    expect(a.v).toBe(7);
+    expect(a.v).toBe(SAVE_VERSION);
     for (const r of a.roster) {
       const was = old.roster.find((x) => x.id === r.id)!;
       expect(r.base.mental).toBe(was.base.mental);
@@ -442,9 +446,9 @@ describe("enemy targeting", () => {
     return count;
   };
   it("23–24. ordinary enemies spread their fire: Jubey is one target among several", () => {
-    const c = share("light", "builder,clampjaw,possum");
+    const c = share("light", "builder,walker,frame");
     expect(c.jubey).toBeLessThan(0.35);
-    for (const k of ["builder", "clampjaw", "possum"]) expect(c[k], k).toBeGreaterThan(0.12);
+    for (const k of ["builder", "walker", "frame"]) expect(c[k], k).toBeGreaterThan(0.12);
     const alone = share("light", "");
     expect(alone.jubey).toBe(1);
   });
@@ -455,9 +459,10 @@ describe("enemy targeting", () => {
     let hurt = 0;
     const n = 4000;
     for (let i = 0; i < n; i++) if (pickTargetForTest(s, u)?.kind === "builder") hurt++;
-    // Uniform share 0.75/4 plus all of the tactical 0.25.
-    expect(hurt / n).toBeGreaterThan(0.75 / 4 + 0.25 - 0.05);
-    expect(hurt / n).toBeLessThan(0.75 / 4 + 0.25 + 0.05);
+    // Weighted random share plus all of the tactical 0.25. Clampjaw and Possum weigh less (v0.7).
+    const w = 2 + 2 * RULES.noncombatWeight;
+    expect(hurt / n).toBeGreaterThan((0.75 * 1) / w + 0.25 - 0.05);
+    expect(hurt / n).toBeLessThan((0.75 * 1) / w + 0.25 + 0.05);
   });
   it("25. illegal targets are never picked: overhead for melee, foamed, shut down", () => {
     const s = fight({ enemies: "latchback", allies: "walker,builder" });
@@ -601,6 +606,7 @@ describe("Threat stalkers", () => {
     s.room = room - 1;
     s.threat = threat;
     s.team.nextAt = 999; // keep R-8 out of these rooms: they take precedence over a stalker
+    s.salvagedThisRoom = true; // no quiet-room drain on the way in
     return nextRoom(s);
   };
   it("34. Threat 5 starts one stalker hunting; Threat 4 does not", () => {

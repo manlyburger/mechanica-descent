@@ -24,6 +24,7 @@ import { setPilot } from "./team";
 import { has as hasGear, laserBonus, missilePod, reload, salvageGear, spendRound } from "./gear";
 import { anonEject, buddyDown } from "./recovery";
 import { onStalkerKilled } from "./stalkers";
+import { afterCover, partDown, partHit, rangeSteps } from "./parts";
 
 /** Scrap a wreck of this kind holds. */
 export function wreckValue(kind: UnitKind): number {
@@ -271,6 +272,7 @@ export function stripWreck(state: GameState, id: string, scrap: number) {
   state.scrap += scrap * w.value;
   state.threat += RULES.salvageThreat;
   state.salvagedThisTurn = true;
+  state.salvagedThisRoom = true;
   state.tally.salvaged += 1;
   log(state, `Stripped ${w.pile ? "spilled cargo" : label(w.kind) + " wreck"}. +${scrap * w.value} Scrap, +${RULES.salvageThreat} Threat.`);
   addNightmare(state, 1);
@@ -283,6 +285,8 @@ export interface DealOpts {
   attackerUid?: string;
   /** Explicitly unsurvivable: no Endurance survival roll. */
   unsurvivable?: boolean;
+  /** Direct fire: cover takes a point off it. */
+  ranged?: boolean;
 }
 
 export function deal(state: GameState, target: Unit | undefined, amount: number, src: string, opts: DealOpts = {}): number {
@@ -294,6 +298,10 @@ export function deal(state: GameState, target: Unit | undefined, amount: number,
       log(state, `${src} hits ${label(target.kind)}. Armor stops it.`);
       return 0;
     }
+  }
+  if (opts.ranged) {
+    dmg = afterCover(state, target, dmg, src);
+    if (dmg <= 0) return 0;
   }
   if (target.side === "friendly" && (target.ward ?? 0) > 0) {
     const soak = Math.min(target.ward!, dmg);
@@ -331,6 +339,7 @@ export function deal(state: GameState, target: Unit | undefined, amount: number,
     log(state, "Machine Possum drops and plays dead.");
   }
   onDamaged(state, target);
+  if (target.hp > 0) partHit(state, target, dmg);
   const l = target.leech;
   if (l && target.side === "enemy" && !opts.noLeech && !l.firedTurn && target.dmgTurn >= RULES.leechThreshold) extract(state, target);
   if (target.hp <= 0 && target.kind === "pilot" && target.side === "friendly" && !opts.unsurvivable) {
@@ -552,9 +561,9 @@ function killFriendly(state: GameState, u: Unit, killerUid?: string) {
 
 // ---------- enemy planning (telegraphed) and actions ----------
 
-export function enemyHitChance(state: GameState, u?: Unit): number {
+export function enemyHitChance(state: GameState, u?: Unit, target?: Unit): number {
   let miss = 1 - RULES.enemyBaseHit;
-  const steps = state.accModEnemy + (u?.accMod ?? 0);
+  const steps = state.accModEnemy + (u?.accMod ?? 0) - (partDown(u, "sensors") ? 1 : 0) - rangeSteps(u, target);
   if (steps > 0) for (let i = 0; i < steps; i++) miss *= 0.5;
   else for (let i = 0; i < -steps; i++) miss = Math.min(1, miss * 2);
   const base = 1 - miss;
@@ -579,8 +588,31 @@ function nearest(list: Unit[], slot: number): Unit | undefined {
   return list.slice().sort((a, b) => Math.abs(a.slot - slot) - Math.abs(b.slot - slot) || a.slot - b.slot)[0];
 }
 
+/** Friendly bots with no weapon and nothing building: enemies mostly look past them. */
+export const NONCOMBAT: UnitKind[] = ["robobuddy", "possum", "clampjaw", "pod", "bulkhead"];
+/**
+ * Non-combat bots that build toward a threat over turns: the Shepherd piles
+ * Scrap to feed the Warframe. Reduced less. The Builder Drone (timed builds)
+ * and the Unfinished Warframe (startup) are not reduced at all.
+ */
+export const BUILDING: UnitKind[] = ["shepherd"];
+export function targetWeight(u: Unit): number {
+  if (NONCOMBAT.includes(u.kind)) return RULES.noncombatWeight;
+  if (BUILDING.includes(u.kind)) return RULES.buildingWeight;
+  return 1;
+}
+function weightedPick(state: GameState, c: Unit[]): Unit {
+  const total = c.reduce((n, u) => n + targetWeight(u), 0);
+  let r = roll(state) * total;
+  for (const u of c) if ((r -= targetWeight(u)) < 0) return u;
+  return c[c.length - 1];
+}
+
 /** The quarter of the time an enemy actually thinks about who to shoot. */
-function tacticalTarget(state: GameState, u: Unit, c: Unit[]): Unit {
+function tacticalTarget(state: GameState, u: Unit, all: Unit[]): Unit {
+  // A thinking enemy does not waste a shot on a bot that cannot hurt it, unless that is all there is.
+  const fighting = all.filter((f) => !NONCOMBAT.includes(f.kind));
+  const c = fighting.length ? fighting : all;
   const j = c.find((f) => f.kind === "jubey");
   if (u.kind === "infested") {
     const hunt = state.threat >= RULES.threatHunt || state.contamination >= RULES.contamHunt;
@@ -613,7 +645,7 @@ export function pickTarget(state: GameState, u: Unit, ranged = false): Unit | un
   if (!c.length) return undefined;
   const beacon = c.find((f) => f.kind === "beacon");
   if (beacon) return beacon;
-  if (chance(state, RULES.randomTarget)) return pick(state, c);
+  if (chance(state, RULES.randomTarget)) return weightedPick(state, c);
   return tacticalTarget(state, u, c);
 }
 
@@ -830,14 +862,14 @@ export function enemyAct(state: GameState, u: Unit) {
   if (marked) {
     state.teamMark = false;
     log(state, `${name} fires on Needleback's mark.`);
-  } else if (!chance(state, enemyHitChance(state, u))) {
+  } else if (!chance(state, enemyHitChance(state, u, missile ? undefined : tgt))) {
     log(state, `${name}${missile ? " missile" : ""} misses.`);
     return;
   }
   const final = redirect(state, u, tgt);
   const wasJack = final.kind === "jack" && final.uid !== tgt.uid;
-  const base = missile ? (u.kind === "lvl2" ? 6 : 3) : u.atk;
-  const done = deal(state, final, crazyDmg(base, u.crazy, state), missile ? `${name} missile` : name, { attackerUid: u.uid });
+  const base = missile ? (u.kind === "lvl2" ? 6 : 3) : Math.max(1, u.atk - (partDown(u, "weapon") ? 1 : 0));
+  const done = deal(state, final, crazyDmg(base, u.crazy, state), missile ? `${name} missile` : name, { attackerUid: u.uid, ranged: !missile && !is(u, "melee") });
   if (u.kind === "infested" && final.kind === "jubey" && done > 0) addContamination(state, RULES.contamPerInfestedHit, "The Infested leaves something on the rig.");
   if (u.kind === "nightmare" && done > 0) {
     state.madness += 1;
@@ -859,7 +891,7 @@ export function enemyAct(state: GameState, u: Unit) {
 function machineAttack(state: GameState, a: Unit, tgt: Unit | undefined, dmg: number) {
   if (!tgt || dmg <= 0) return;
   const p = (a.kind === "scared" ? RULES.allyHit : RULES.machineHit) + commandBonus(state);
-  if (chance(state, p)) deal(state, tgt, dmg, label(a.kind), { attackerUid: a.uid });
+  if (chance(state, p)) deal(state, tgt, dmg, label(a.kind), { attackerUid: a.uid, ranged: !is(a, "melee") });
   else log(state, `${label(a.kind)} fires wide.`);
 }
 function nearestEnemy(state: GameState, a: Unit): Unit | undefined {
@@ -1067,7 +1099,7 @@ export function allyAct(state: GameState, a: Unit) {
       break;
     case "frame":
       frameAct(state, a, (t, dmg, p) => {
-        if (chance(state, p)) deal(state, t, dmg, `${pilotRec(state, a.pilot)?.name ?? "Frame"}'s frame`, { attackerUid: a.uid });
+        if (chance(state, p)) deal(state, t, dmg, `${pilotRec(state, a.pilot)?.name ?? "Frame"}'s frame`, { attackerUid: a.uid, ranged: true });
         else log(state, `${pilotRec(state, a.pilot)?.name ?? "The frame"} fires wide.`);
       }, fighters(state));
       break;

@@ -378,3 +378,45 @@ h2 { font-size: 17px; font-weight: 600; margin: 0 0 8px; letter-spacing: 0.03em;
   background: #ff2a2a;
   box-shadow: 0 0 6px 2px rgba(255, 42, 42, 0.7);
 }
+
+/* ---- v0.7: grouped log, parts, cover ---- */
+.logbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+.logbar .btn.mini {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.loggroup {
+  margin-bottom: 6px;
+}
+.logtitle,
+.loggroup summary {
+  color: var(--gold, #d8b24a);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.loggroup.open div,
+.loggroup div {
+  margin-bottom: 4px;
+}
+.log .flavor {
+  font-style: italic;
+  opacity: 0.75;
+}
+.logbar .btn {
+  width: auto;
+  min-height: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  margin: 0;
+}

@@ -1,7 +1,7 @@
 import type { CustodyItem } from "./capture";
 import { RULES, type CardId, type ChoiceId, type Phase, type Side, type UnitKind } from "./data";
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface Leech {
   cardUid?: string; // absent for temporary leeches
@@ -117,6 +117,10 @@ export interface Unit {
   // clampjaw
   apprehend?: string; // ordered target
   holding?: string; // captive id carried between fights
+  // v0.7
+  partsDown?: string[]; // knocked-out parts: sensors, weapon, actuator
+  moved?: boolean; // shifted a column this turn
+  restrainTried?: number; // turn of the last restraint attempt on this capsule
   // enemy equipment and magazine
   gear?: EnemyGear[];
   gearRolled?: boolean;
@@ -262,6 +266,7 @@ export interface PodRec {
   helped: boolean;
   asked: boolean; // questioned
   tried: boolean; // asked to join
+  failed?: string[]; // restraint items that already failed on this occupant
   resolved: boolean;
   secured: boolean; // was restrained on the field
 }
@@ -422,6 +427,7 @@ export interface GameState {
   rocketFindChance: number;
 
   salvagedThisTurn: boolean;
+  salvagedThisRoom: boolean;
   pathRisky: boolean;
   extraCrazy: number;
   extraNightmare: number;
@@ -586,6 +592,7 @@ export function createGame(seed = 1): GameState {
     rocketAmmo: 0,
     rocketFindChance: RULES.rocketFindBase,
     salvagedThisTurn: false,
+    salvagedThisRoom: false,
     pathRisky: false,
     extraCrazy: 0,
     extraNightmare: 0,

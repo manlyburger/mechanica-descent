@@ -22,7 +22,7 @@ export function has(u: Unit, id: EnemyGear["id"]): EnemyGear | undefined {
   return u.gear?.find((g) => g.id === id);
 }
 export function magazine(u: Unit): number {
-  return has(u, "extmag") ? Math.ceil(RULES.magazine * 1.5) : RULES.magazine;
+  return has(u, "extmag") && !u.partsDown?.includes("weapon") ? Math.ceil(RULES.magazine * 1.5) : RULES.magazine;
 }
 export function allowed(kind: UnitKind, id: EnemyGear["id"]): boolean {
   if (id === "missilepod") return true;
@@ -114,7 +114,7 @@ export function reveal(state: GameState, u: Unit, id: EnemyGear["id"], how: stri
 }
 
 export function laserBonus(u: Unit | undefined): number {
-  return u && has(u, "laser") ? RULES.laserBonus : 0;
+  return u && has(u, "laser") && !u.partsDown?.includes("sensors") ? RULES.laserBonus : 0;
 }
 
 /** Ordinary shots spend rounds. An empty magazine means the next turn goes to reloading. */
@@ -134,7 +134,7 @@ export function reload(state: GameState, u: Unit) {
 /** After the unit's own action: the missile pod fires on its own schedule, never more than once a turn. */
 export function missilePod(state: GameState, u: Unit, pickTarget: (u: Unit) => Unit | undefined, hit: number) {
   const g = has(u, "missilepod");
-  if (!g || u.hp <= 0 || !state.units.includes(u) || u.cap || g.last === state.turn) return;
+  if (!g || u.hp <= 0 || !state.units.includes(u) || u.cap || g.last === state.turn || u.partsDown?.includes("actuator")) return;
   g.last = state.turn;
   if (g.cd > 0) {
     g.cd -= 1;

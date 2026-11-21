@@ -31,7 +31,16 @@ function checkInvariants(s: GameState) {
   const holders = s.captives.map((c) => c.holder);
   expect(new Set(holders).size, "holder with two captives").toBe(holders.length);
   expect(new Set(s.captives.map((c) => c.id)).size, "captive duplicated").toBe(s.captives.length);
-  for (const c of s.captives) expect(s.units.some((u) => u.uid === c.holder && u.holding === c.id), "captive without its holder").toBe(true);
+  for (const c of s.captives) {
+    if (c.holder.startsWith("bound:")) expect(c.holder, "bound captive with a borrowed holder id").toBe("bound:" + c.id);
+    else expect(s.units.some((u) => u.uid === c.holder && u.holding === c.id), "captive without its holder").toBe(true);
+  }
+  expect(s.captives.filter((c) => c.holder.startsWith("bound:")).length, "too many bound captives").toBeLessThanOrEqual(RULES.boundMax);
+  // v0.7: parts and positions.
+  for (const u of s.units) {
+    expect(new Set(u.partsDown ?? []).size, "part knocked out twice").toBe((u.partsDown ?? []).length);
+    if (u.side === "friendly" && u.hp > 0 && u.slot >= 0) expect(s.units.filter((x) => x.side === "friendly" && x.hp > 0 && x.slot === u.slot).length, "two units in one column").toBe(1);
+  }
   // Pilots as people: one record per id, one place at a time.
   expect(new Set(s.roster.map((r) => r.id)).size, "pilot record duplicated").toBe(s.roster.length);
   for (const r of s.roster) {
@@ -116,6 +125,10 @@ function note6(s: GameState) {
   if (s.buddy.rebuilt > 0) brief6.add("buddy:rebuilt");
   if (s.units.some((u) => u.gear?.some((g) => g.revealed))) brief6.add("gear:revealed");
   if (s.units.some((u) => u.plan?.type === "reload")) brief6.add("reload");
+  if (s.units.some((u) => u.partsDown?.length)) brief6.add("v07:part");
+  if (s.units.some((u) => u.moved)) brief6.add("v07:shift");
+  if (s.captives.some((c) => c.holder.startsWith("bound:"))) brief6.add("v07:bound");
+  if (s.events.some((e) => e.includes("in cover behind"))) brief6.add("v07:cover");
 }
 
 describe("engine", () => {
@@ -178,7 +191,7 @@ describe("engine", () => {
     for (const id of REWARD_POOL) expect(played.has(id), `card ${id} never played`).toBe(true);
     for (const op of ["equip", "unequip", "assign:foot", "assign:frame", "talk", "treat", "stat", "unlock"]) expect(played.has("pilot:" + op), `pilot op ${op} never used`).toBe(true);
     expect(endings.size, "no run ever ended the pursuit").toBeGreaterThanOrEqual(1);
-    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
+    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload", "v07:part", "v07:shift", "v07:bound", "v07:cover"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
     expect(statuses.has("dead") && (statuses.has("escaped") || statuses.has("withdrawn")), `pilot outcomes seen: ${[...statuses].join(", ")}`).toBe(true);
   });
 

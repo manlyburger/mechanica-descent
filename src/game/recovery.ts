@@ -11,6 +11,8 @@ import { FLEE_NAMES, FRAME_FAULTS, PR, type Chassis, type Spec } from "./pilots-
 import type { EventView, Option } from "./events";
 import type { GameState, PilotRec, PodRec, Unit, Wreck } from "./state";
 import { setPilot } from "./team";
+import { bindPilot, boundBlock, restrainChance, restraintsInStore } from "./restraint";
+import { ITEMS } from "./pilots-data";
 
 export const isRecovery = (id: string) => id === "recovery";
 const opt = (id: string, name: string, detail: string, enabled = true): Option => ({ id, label: name, detail, enabled });
@@ -308,6 +310,11 @@ export function recoveryView(state: GameState): EventView {
         const sb = secureBlock(state, f);
         o.push(opt("secure", "Secure as captive", sb ?? "Into a free Clampjaw or Containment Pod.", !sb));
       }
+      for (const it of restraintsInStore(state)) {
+        const block = boundBlock(state) ?? (f.failed?.includes(it.id) ? "Already failed with this." : null);
+        const ctx = { outcome: f.outcome, subdued: f.subdued, hurt: f.hp < f.maxHp };
+        o.push(opt(`restrain:${it.id}`, `Restrain with ${ITEMS[it.id].name}`, block ?? `${Math.round(restrainChance(r, it.id, ctx) * 100)}% · rank ${ITEMS[it.id].rank}. No holder needed: your crew walks them.${f.outcome === "hostile" || f.outcome === "frightened" ? " A miss and they run." : ""}`, !block));
+      }
       const rb = recruitBlock(f, r);
       o.push(opt("recruit", "Attempt peaceful recruitment", rb ?? `${Math.round(recruitChance(f, r) * 100)}% they agree. ${f.outcome === "frightened" ? "If not, they bolt." : ""}`, !rb));
       const kit = medkitCharge(state);
@@ -401,6 +408,25 @@ export function resolveRecovery(state: GameState, option: string): boolean {
     return true;
   }
   if (!f || !r) return false;
+
+  if (option.startsWith("restrain:")) {
+    const id = option.slice(9);
+    const item = state.items.find((x) => x.id === id);
+    if (!item) return false;
+    if (chance(state, restrainChance(r, id, { outcome: f.outcome, subdued: f.subdued, hurt: f.hp < f.maxHp }))) {
+      bindPilot(state, r, item, "pulled from the pod");
+      f.secured = true;
+      finish(f);
+    } else if (f.outcome === "hostile" || f.outcome === "frightened") {
+      say(state, `${r.name} twists out of the ${ITEMS[id].name} and is gone down the hall.`);
+      setPilot(state, r.id, "escaped", "slipped the restraints at the pod");
+      finish(f);
+    } else {
+      f.failed = [...(f.failed ?? []), id];
+      say(state, `The ${ITEMS[id].name} will not close on ${r.name}. Try something else.`);
+    }
+    return false;
+  }
 
   switch (option) {
     case "subdue": {

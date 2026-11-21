@@ -280,7 +280,12 @@ export function actSpecial(state: GameState, u: Unit, plan: Plan): boolean {
     }
     case "approach":
     case "rush": {
-      u.prox = plan.type === "rush" ? RULES.proxEngaged : Math.min(RULES.proxEngaged, (u.prox ?? 0) + 1);
+      const limp = u.partsDown?.includes("actuator");
+      if (limp && state.turn % 2 === 1) {
+        log(state, `${name} drags its damaged actuator and does not close.`);
+        return true;
+      }
+      u.prox = plan.type === "rush" && !limp ? RULES.proxEngaged : Math.min(RULES.proxEngaged, (u.prox ?? 0) + 1);
       log(state, `${name} ${plan.type === "rush" ? "charges" : "closes"}: ${PROX_NAMES[u.prox]}.`);
       if (u.kind === "kilnheart") {
         const cover = living(state, "friendly").find((f) => f.kind === "bulkhead");

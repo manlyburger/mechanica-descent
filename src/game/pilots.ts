@@ -679,7 +679,7 @@ export function footAct(state: GameState, u: Unit, fighters: Unit[]) {
       } else log(state, `The Shock Pistol does nothing to something that size.`);
       continue;
     }
-    deal(state, tgt, (w.dmg ?? 1) + assaultBonus(r), `${r.name}'s ${w.name}`, { attackerUid: u.uid });
+    deal(state, tgt, (w.dmg ?? 1) + assaultBonus(r), `${r.name}'s ${w.name}`, { attackerUid: u.uid, ranged: true });
   }
 }
 function sizeOf(kind: UnitKind) {

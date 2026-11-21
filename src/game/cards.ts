@@ -1,5 +1,9 @@
 // Playing cards and issuing commands to units.
 
+import { canShift, shift } from "./parts";
+import { capsuleOdds, restrainCapsule, restrainCommandBlock, restrainTarget, restraintsInStore } from "./restraint";
+import { resolveCapsule } from "./recovery";
+import { ITEMS } from "./pilots-data";
 import { CARDS, LEECH_RADIO, OVERRIDE_LINES, RULES, cardName, label, type CardDef } from "./data";
 import {
   addProgress,
@@ -173,12 +177,12 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
     case "SLUG": {
       const r = fireRedmouth(state, target);
       const base = card.id === "GUN" ? 1 + Math.floor(roll(state) * 3) : 5;
-      deal(state, r.target, base + r.bonus, card.id === "GUN" ? "Machine gun" : "Deadbolt slug");
+      deal(state, r.target, base + r.bonus, card.id === "GUN" ? "Machine gun" : "Deadbolt slug", { ranged: true });
       break;
     }
     case "BURST": {
       const r = fireRedmouth(state, undefined);
-      for (const t of living(state, "enemy")) deal(state, t, 1 + r.bonus, "Suppressing burst");
+      for (const t of living(state, "enemy")) deal(state, t, 1 + r.bonus, "Suppressing burst", { ranged: true });
       break;
     }
     case "WELDER":
@@ -233,7 +237,7 @@ export function playCard(state: GameState, cardUid: string, targetId?: string, s
     case "ROCKET": {
       const t = target!;
       const splash = living(state, "enemy").filter((u) => Math.abs(u.slot - t.slot) === 1);
-      deal(state, t, 4, "Rocket");
+      deal(state, t, 4, "Rocket", { ranged: true });
       if (t.hp > 0) t.burn = Math.max(t.burn, 2);
       for (const s of splash) {
         deal(state, s, 2, "Rocket splash");
@@ -429,6 +433,10 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
     if (u.leech && !u.leech.temp) add("risky", "Risky Extraction", `+${RULES.riskyExtractScrap} Scrap, 1 damage to host. The Leech is spent for this fight.`);
     if ((u.wedge ?? 0) > 0) add("unwedge", "Remove the Wedge", `${RULES.wedgeRemoveEnergy} Energy. The cockpit can open and eject again.`, en(RULES.wedgeRemoveEnergy));
     if (u.cap) add("unbind", "Release it", "Take the restraints off. It is free again.");
+    if (restrainTarget(u)) {
+      const why = restrainCommandBlock(state, u);
+      for (const it of restraintsInStore(state)) add(`restrain:${it.id}`, `Restrain: ${ITEMS[it.id].name}`, why ?? `${Math.round(capsuleOdds(state, u, it.id) * 100)}% · rank ${ITEMS[it.id].rank} · ${RULES.restrainEnergy} Energy. Bound and walked by your crew. On a miss they bolt next turn.`, !why);
+    }
     return out;
   }
   if (u.malf && state.equip.hand && !state.handUsed) add("override", "Manual Override", "Cancel the malfunction and take control. The machine takes 1 after it acts.");
@@ -500,6 +508,14 @@ export function commandsFor(state: GameState, u: Unit): Command[] {
     default:
       break;
   }
+  // Moving along your own line: into cover, out of a splash, closer or further across.
+  for (const dir of [-1, 1] as const) {
+    const why = canShift(state, u, dir);
+    const jub = u.kind === "jubey";
+    const cost = jub ? RULES.jubeyMoveEnergy : 0;
+    if (why === "end of the line" || why === "bolted down" || why === "not yours") continue;
+    add(dir < 0 ? "shift-left" : "shift-right", dir < 0 ? "Shift left" : "Shift right", why ?? `${jub ? `${cost} Energy. ` : "Free, once a turn. "}Move one column ${dir < 0 ? "left" : "right"}.`, !why && (!jub || en(cost)));
+  }
   return out;
 }
 
@@ -544,7 +560,16 @@ export function runCommand(state: GameState, uidOf: string, cmd: string, targetI
   if (def.targets && (!targetId || !def.targets.includes(targetId))) return;
   const t = unit(state, targetId);
 
+  if (cmd.startsWith("restrain:")) {
+    restrainCapsule(state, u, cmd.slice(9), (x) => resolveCapsule(state, x));
+    return;
+  }
   switch (cmd) {
+    case "shift-left":
+    case "shift-right":
+      if (u.kind === "jubey") payEnergy(state, RULES.jubeyMoveEnergy, true);
+      shift(state, u, cmd === "shift-left" ? -1 : 1);
+      break;
     case "risky": {
       u.leech = undefined;
       addScrap(state, RULES.riskyExtractScrap, "Risky Extraction");

@@ -161,6 +161,8 @@ export interface ItemDef {
   stun?: boolean;
   // effects
   strain?: number;
+  /** Restraints: how good it is for putting on someone who does not want it (1–3). */
+  rank?: number;
   harsh?: boolean;
 }
 
@@ -173,11 +175,11 @@ export const ITEMS: Record<string, ItemDef> = {
   acoustic: I({ id: "acoustic", name: "Acoustic Suppression Mask", cat: "gag", side: "captive", price: 3, harsh: true, text: "Blocks speech, and masks even muffled noise at a distance. −1 loyalty per room." }),
   muzzle: I({ id: "muzzle", name: "Quick-Release Muzzle", cat: "gag", side: "captive", price: 1, text: "Stops half of spoken warnings. You can talk to them without taking it off." }),
   // Captive: restraints. At most two, at most one harness.
-  plockbands: I({ id: "plockbands", name: "Industrial Lockbands", cat: "restraint", side: "captive", price: 1, strain: 6, text: "−6 escape strain per room. Two can be fitted." }),
-  cuffs: I({ id: "cuffs", name: "Reinforced Cuffs", cat: "restraint", side: "captive", price: 2, strain: 8, text: "−8 escape strain per room." }),
-  ankle: I({ id: "ankle", name: "Magnetic Ankle Locks", cat: "restraint", side: "captive", price: 2, strain: 5, text: "−5 escape strain per room. A runner wearing them is a turn slower." }),
-  harness: I({ id: "harness", name: "Armored Restraint Harness", cat: "restraint", side: "captive", price: 3, strain: 12, harsh: true, text: "−12 escape strain per room. No field assignments while worn. −2 loyalty per room." }),
-  shackles: I({ id: "shackles", name: "Remote Release Shackles", cat: "restraint", side: "captive", price: 3, strain: 4, text: "−4 strain. Stays on during assignments: halves the chance they bolt, and you can lock it remotely when they try." }),
+  plockbands: I({ id: "plockbands", name: "Industrial Lockbands", cat: "restraint", side: "captive", price: 1, strain: 6, rank: 1, text: "−6 escape strain per room. Two can be fitted. Capture rank 1." }),
+  cuffs: I({ id: "cuffs", name: "Reinforced Cuffs", cat: "restraint", side: "captive", price: 2, strain: 8, rank: 2, text: "−8 escape strain per room. Capture rank 2." }),
+  ankle: I({ id: "ankle", name: "Magnetic Ankle Locks", cat: "restraint", side: "captive", price: 2, strain: 5, rank: 1, text: "−5 escape strain per room. A runner wearing them is a turn slower. Capture rank 1." }),
+  harness: I({ id: "harness", name: "Armored Restraint Harness", cat: "restraint", side: "captive", price: 3, strain: 12, harsh: true, rank: 3, text: "−12 escape strain per room. No field assignments while worn. −2 loyalty per room. Capture rank 3." }),
+  shackles: I({ id: "shackles", name: "Remote Release Shackles", cat: "restraint", side: "captive", price: 3, strain: 4, rank: 2, text: "−4 strain. Stays on during assignments: halves the chance they bolt, and you can lock it remotely when they try. Capture rank 2." }),
   // Captive: relays. Monitoring tells you; it does not stop anything.
   statusrelay: I({ id: "statusrelay", name: "Captive Status Relay", cat: "relay", side: "captive", price: 1, text: "Shows exact escape strain. Warns at 70." }),
   monitor: I({ id: "monitor", name: "Communication Monitor", cat: "relay", side: "captive", price: 2, text: "Reports when their suit transmitter pings their old section. Does not block it." }),

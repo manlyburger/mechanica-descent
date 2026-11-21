@@ -4,7 +4,7 @@
 
 import { CARDS, REWARD_POOL, RULES } from "./data";
 import { addCard, addScrap, allies, canPayEnergy, chance, deal, freeFriendSlot, hasAlly, inDeck, jubey, log, payEnergy, pick, roll, spawn } from "./core";
-import { PILOTED, rollParts } from "./pilots";
+import { PILOTED, rec, rollParts } from "./pilots";
 import { dismantleValue, freeClampjaw, integrityBand, loseCaptive, podFits, resolveTap, takeCaptive, vacantPod, type TapChoice } from "./capture";
 import type { EventView, Flow, Option } from "./events";
 import type { GameState } from "./state";
@@ -375,6 +375,10 @@ export function resolveStory(state: GameState, option: string, flow: Flow) {
           p.status = "withdrawn";
           p.returnsIn = undefined;
         }
+        // Handed back means handed back: a Tracking Relay does not turn them into a runner.
+        state.pendingRunners = state.pendingRunners.filter((x) => x !== id);
+        const r = rec(state, id);
+        if (r && r.custody === "fleeing") r.custody = "free";
         say(state, "bishop", "You get your hallway. I get my pilot. Section, break contact.");
         withdraw(state, "withdrawal negotiated in exchange for a pilot.");
       } else if (option === "codes") {

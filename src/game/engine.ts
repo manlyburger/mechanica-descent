@@ -68,6 +68,8 @@ export { SAVE_VERSION, createGame } from "./state";
 export { GEAR, gearLine, discoveryChance } from "./gear";
 export * as RC from "./recovery";
 export * as ST from "./stalkers";
+export * as PT from "./parts";
+export * as RS from "./restraint";
 export type { Action, CardInst, GameState, Unit, Wreck, Plan } from "./state";
 export { canPlay, whyNot, validTargets, commandsFor, ejectedCommand, tapCommands, type Command } from "./cards";
 export { integrityBand, captiveOf, whyNotRestrainable } from "./capture";
@@ -110,6 +112,12 @@ function rollPack(state: GameState): UnitKind[] {
 
 function startRoom(state: GameState) {
   const lastRisky = state.pathRisky;
+  // Threat settles room by room: a quiet room behind you lets it drop.
+  if (state.room > 0 && !state.salvagedThisRoom && state.threat > 0) {
+    state.threat = Math.max(0, state.threat - RULES.threatDrainPerRoom);
+    log(state, `Nothing stripped last room. Threat settles to ${state.threat}.`);
+  }
+  state.salvagedThisRoom = false;
   state.room += 1;
   state.turn = 0;
   state.units = state.units.filter((u) => u.side === "friendly" && u.hp > 0);
@@ -435,6 +443,8 @@ function beginPlayerTurn(state: GameState) {
   state.energy = state.energyCap + state.bonusEnergy;
   state.block = 0;
   state.salvagedThisTurn = false;
+  for (const u of state.units) u.moved = false;
+  log(state, `— Turn ${state.turn} —`);
   state.accModEnemy = 0;
   state.servoUsed = false;
   state.reflexUsed = false;
@@ -706,7 +716,6 @@ function endTurn(state: GameState) {
   }
   if (state.stripped > 0) state.stripped -= 1;
   state.madness = Math.max(0, state.madness - RULES.madnessDecay);
-  if (!state.salvagedThisTurn) state.threat = Math.max(0, state.threat - 1);
   pilotsTurnEnd(state);
   beginPlayerTurn(state);
 }
@@ -924,7 +933,8 @@ export function reduce(prev: GameState, action: Action): GameState {
 // ---------- saves ----------
 
 /**
- * Brings a version 6 save up to version 7. Observation comes from a hash of
+ * Brings a version 6 or 7 save up to the current version (v8 adds only
+ * fields that default safely). Observation comes from a hash of
  * the seed and the pilot's id: the same save always gets the same values, and
  * Mental, Skill and Endurance are untouched. Returns null for anything else.
  */
@@ -932,7 +942,7 @@ export function migrate(raw: unknown): GameState | null {
   const s = raw as GameState & { v: number };
   if (!s || typeof s !== "object" || !Array.isArray(s.roster)) return null;
   if (s.v === SAVE_VERSION_) return s;
-  if (s.v !== 6) return null;
+  if (s.v !== 6 && s.v !== 7) return null;
   const st = structuredClone(s) as GameState;
   for (const r of st.roster) migrateObservation(st.seed, r);
   st.pods = st.pods ?? [];
@@ -943,6 +953,7 @@ export function migrate(raw: unknown): GameState | null {
   st.routeSnippets = st.routeSnippets ?? [];
   st.notices = st.notices ?? [];
   st.scanned = st.scanned ?? false;
+  st.salvagedThisRoom = st.salvagedThisRoom ?? false; // v8
   st.v = SAVE_VERSION_;
   return st;
 }

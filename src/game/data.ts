@@ -287,6 +287,11 @@ export const RULES = {
 
   // ---- Brief 6: targeting, Robobuddy, pods, enemy gear, stalkers ----
   randomTarget: 0.75, // the rest is tactical
+  // How likely enemies are to pick a bot that does not fight, relative to anything else.
+  // Bots that build toward something dangerous over turns are not reduced, or reduced less.
+  noncombatWeight: 0.1,
+  buildingWeight: 0.6,
+  threatDrainPerRoom: 1, // Threat lost on entering a room if you stripped nothing in the last one
   buddyRebuildCost: 1, // Scrap taken out of one wreck (the brief proposed 2; an ordinary wreck here holds 1)
   buddyRebuildHp: 0.5,
   buddyReassemblyRooms: 2, // rooms it sits out after a rebuild before it rejoins
@@ -302,7 +307,7 @@ export const RULES = {
   hitCap: 0.95,
   gearSalvage: 0.3,
   // [first room, chance, max] for random enemy equipment
-  gearDepth: [[1, 0, 0], [5, 0.25, 1], [9, 0.45, 1], [15, 0.65, 2], [21, 0.8, 2]] as [number, number, number][],
+  gearDepth: [[1, 0, 0], [3, 0.1, 1], [5, 0.25, 1], [9, 0.45, 1], [15, 0.65, 2], [21, 0.8, 2]] as [number, number, number][],
   jubeyObv: 1, // Jubey's own eye, when no crew pilot sees better
   obvBase: 0.1,
   obvPer: 0.06,
@@ -318,6 +323,25 @@ export const RULES = {
   stalkerHpPerLevel: 2,
   // Scrap in a wreck, by what it was. Anything not listed holds 1, as before.
   wreckValue: { widow: 2, kilnheart: 2, bishop: 2, hunter: 2, tracker: 2, predator: 2, nightmare: 2 } as Record<string, number>,
+
+  // ---- v0.7: restraints as capture tools ----
+  boundMax: 2, // captives your crew can walk along bound, besides Clampjaws and Pods
+  restrainEnergy: 1,
+  restrainBase: 0.25,
+  restrainPerRank: 0.15,
+  restrainPerEndurance: 0.03,
+  restrainPerLevel: 0.03,
+  restrainPerBand: 0.05,
+  restrainMin: 0.05,
+  restrainMax: 0.95,
+
+  // ---- v0.7: part damage, cover, positioning ----
+  partHitMin: 2, // a hit this big after armor can knock a part out
+  partHitBig: 4, // twice as likely from here
+  partHitChance: 0.2,
+  coverSoak: 1,
+  longRange: 4, // columns across before enemy fire loses a step of aim
+  jubeyMoveEnergy: 1,
 
   // ---- Enemy counterplay ----
   droneScavenge: 0.35,

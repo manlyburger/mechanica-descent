@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { FRAME_FAULTS, ITEMS, PR, SPECS, TRAITS, P, discoveryChance, type Action, type GameState } from "./game/engine";
-import type { PilotRec } from "./game/state";
-import { label } from "./game/data";
+import { FRAME_FAULTS, ITEMS, PR, SPECS, TRAITS, P, discoveryChance, type Action, type GameState } from "../game/engine";
+import type { PilotRec } from "../game/state";
+import { label } from "../game/data";
 
 type Dispatch = (a: Action) => void;
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -12,6 +12,7 @@ function custodyText(state: GameState, r: PilotRec): string {
   if (r.custody === "captive") {
     const c = state.captives.find((x) => x.pilot === r.id);
     const h = state.units.find((u) => u.uid === c?.holder);
+    if (c?.holder.startsWith("bound:")) return "Captive, bound and walked along by your crew";
     return `Captive${h ? `, held by the ${h.kind === "pod" ? "Containment Pod" : "Clampjaw"}` : ""}`;
   }
   return r.custody === "fleeing" ? "On the run" : r.custody === "dead" ? "Lost" : "Not yours";

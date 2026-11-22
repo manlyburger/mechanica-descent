@@ -109,9 +109,13 @@ const ORIGIN_SPECS: Partial<Record<UnitKind, Spec[]>> = {
   hunter: ["Assault", "Heavy"],
   tracker: ["Scout"],
   predator: ["Recovery", "Technician"],
+  scout: ["Scout"],
+  gunner: ["Assault"],
+  shieldmech: ["Heavy", "Assault"],
+  mortar: ["Technician", "Heavy"],
 };
 const ORIGIN_CHASSIS: Partial<Record<UnitKind, Chassis>> = {
-  light: "light", needleback: "light", tracker: "light", lvl2: "medium", latchback: "medium", widow: "medium", bishop: "medium", powered: "medium", kilnheart: "heavy", hunter: "heavy", predator: "heavy",
+  light: "light", needleback: "light", tracker: "light", lvl2: "medium", latchback: "medium", widow: "medium", bishop: "medium", powered: "medium", kilnheart: "heavy", hunter: "heavy", predator: "heavy", scout: "light", gunner: "light", shieldmech: "medium", mortar: "medium",
 };
 export function chassisFor(kind: UnitKind): Chassis {
   return ORIGIN_CHASSIS[kind] ?? "medium";

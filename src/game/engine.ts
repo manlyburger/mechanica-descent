@@ -95,6 +95,22 @@ export function rotCards(state: GameState): number {
   return Math.min(RULES.contamRotMax, Math.floor(state.contamination / RULES.contamPerRot));
 }
 
+/** v0.9: what the basic-enemy layer looks like for a room: swap odds, extras, and which kinds can turn up. */
+export function basicOutlook(room: number): { variant: number; extras: number; kinds: UnitKind[] } {
+  const variant = room >= RULES.variantFromRoom ? Math.min(RULES.variantMax, RULES.variantPerRoom * (room - RULES.variantFromRoom + 1)) : 0;
+  const extras = room >= RULES.basicExtraFrom ? Math.min(RULES.basicExtraMax, Math.floor((room - RULES.basicExtraFrom) / RULES.basicExtraEvery)) : 0;
+  const kinds = (Object.keys(RULES.basicPool) as UnitKind[]).filter((k) => room >= RULES.basicPool[k][0]);
+  return { variant, extras, kinds };
+}
+function pickBasic(state: GameState, room: number, noLight = false): UnitKind {
+  const pool = basicOutlook(room).kinds.filter((k) => !(noLight && k === "light"));
+  if (!pool.length) return "light";
+  const total = pool.reduce((n, k) => n + RULES.basicPool[k][1], 0);
+  let r = roll(state) * total;
+  for (const k of pool) if ((r -= RULES.basicPool[k][1]) < 0) return k;
+  return pool[pool.length - 1];
+}
+
 function rollPack(state: GameState): UnitKind[] {
   const d = depthFor(state.room);
   const kinds: UnitKind[] = [];
@@ -109,6 +125,10 @@ function rollPack(state: GameState): UnitKind[] {
   }
   if (state.room >= RULES.zombieFromRoom && chance(state, RULES.zombieChance)) kinds.push("zombie");
   if (state.room >= RULES.poweredFromRoom && chance(state, RULES.poweredChance)) kinds.push("powered");
+  // v0.9: Lights have cousins, and deeper packs grow.
+  const o = basicOutlook(state.room);
+  if (o.variant > 0) for (let i = 0; i < kinds.length; i++) if (kinds[i] === "light" && chance(state, o.variant)) kinds[i] = pickBasic(state, state.room, true);
+  for (let i = 0; i < o.extras; i++) kinds.push(pickBasic(state, state.room));
   return kinds;
 }
 
@@ -263,6 +283,8 @@ function spawnPack(state: GameState) {
   const extra: UnitKind[] = [...state.pendingSpawn];
   state.pendingSpawn = [];
   joinStalker(state);
+  // Things that followed you out of a Nightmare Room take their places before the pack does.
+  nmFightStart(state);
 
   if (chance(state, nightP)) {
     log(state, "Nightmare card: THE RIFLEMEN FILE IN.");
@@ -321,7 +343,6 @@ function spawnPack(state: GameState) {
     log(state, `${label(u.kind)} in column ${slot + 1}${m.replacement ? `: ${CALLSIGN[role]}'s pilot, in a replacement frame` : ""}.`);
     if (m.kind === "needleback" && !m.replacement) radio(state, "ep1-contact");
   }
-  nmFightStart(state);
   nmPackTweaks(state);
   // Tracked escapees: they did not get clear.
   const waiting: string[] = [];
@@ -421,13 +442,19 @@ function startExtension(state: GameState, kinds: UnitKind[], setup?: (state: Gam
   openTurnOne(state);
 }
 
+/** Scouts spot first, so the rest of the pack gets the benefit; everyone else in lane order. */
+function actingOrder(state: GameState): Unit[] {
+  const all = living(state, "enemy");
+  return [...all.filter((u) => u.kind === "scout"), ...all.filter((u) => u.kind !== "scout")];
+}
+
 function openTurnOne(state: GameState) {
   state.phase = "player";
   if (state.enemyInitiative) {
     state.enemyInitiative = false;
     log(state, "It gets the first shot.");
     planEnemies(state);
-    for (const u of living(state, "enemy")) if (u.hp > 0 && state.phase === "player") enemyTurn(state, u);
+    for (const u of actingOrder(state)) if (u.hp > 0 && state.phase === "player") enemyTurn(state, u);
     if (isOver(state)) return;
   }
   beginPlayerTurn(state);
@@ -703,7 +730,7 @@ function endTurn(state: GameState) {
     log(state, "A foot comes down on the ejected Leech. Gone for this fight.");
     state.ejected = null;
   }
-  for (const u of living(state, "enemy")) {
+  for (const u of actingOrder(state)) {
     if (state.phase !== "player") break;
     if (u.hp <= 0) continue;
     enemyTurn(state, u);

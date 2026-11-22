@@ -566,7 +566,8 @@ function killFriendly(state: GameState, u: Unit, killerUid?: string) {
 
 export function enemyHitChance(state: GameState, u?: Unit, target?: Unit): number {
   let miss = 1 - RULES.enemyBaseHit;
-  const steps = state.accModEnemy + (u?.accMod ?? 0) - (partDown(u, "sensors") ? 1 : 0) - rangeSteps(u, target);
+  const spotted = target && u && u.kind !== "scout" && target.spotted === state.turn ? 1 : 0;
+  const steps = state.accModEnemy + (u?.accMod ?? 0) - (partDown(u, "sensors") ? 1 : 0) - rangeSteps(u, target) + spotted;
   if (steps > 0) for (let i = 0; i < steps; i++) miss *= 0.5;
   else for (let i = 0; i < -steps; i++) miss = Math.min(1, miss * 2);
   const base = 1 - miss;
@@ -579,6 +580,11 @@ export function enemyHitChance(state: GameState, u?: Unit, target?: Unit): numbe
 export function enemyTurn(state: GameState, u: Unit) {
   const free = !(u.stunned > 0 || u.foam || (u.sealed ?? 0) > 0 || (u.pacified ?? 0) > 0 || u.cap);
   enemyAct(state, u);
+  // The Gunner Mech's second burst: same plan, its own aim roll, its own round.
+  if (free && u.kind === "gunner" && u.plan?.type === "attack" && u.hp > 0 && state.units.includes(u) && (u.ammo ?? 1) > 0 && state.phase === "player") {
+    log(state, "The Gunner Mech keeps the trigger down.");
+    enemyAct(state, u);
+  }
   if (free && state.phase === "player") missilePod(state, u, (x) => pickTarget(state, x, true), enemyHitChance(state, u));
 }
 
@@ -692,7 +698,12 @@ function planEnemyCore(state: GameState, u: Unit): Plan {
   }
   if (u.kind === "predator" && state.wrecks.length && chance(state, 0.35)) return { type: "scavenge", note: "tearing into the wreckage" };
   // An empty magazine means a turn spent reloading, telegraphed like anything else.
-  if (u.ammo === 0 && !(is(u, "melee") && !engaged(u))) return { type: "reload", note: "RELOADING" };
+  if (u.ammo === 0 && !(is(u, "melee") && !engaged(u))) return { type: "reload", note: u.kind === "mortar" ? "LOADING A SHELL" : "RELOADING" };
+  // The Mortar Mech marks a column, not a unit: whatever stands there when it fires takes the shell.
+  if (u.kind === "mortar") {
+    const t = pickTarget(state, u, true);
+    if (t) return { type: "shell", col: t.slot, targetUid: t.uid, note: `SHELLING column ${t.slot + 1}` };
+  }
   return attackPlan(state, u);
 }
 
@@ -826,6 +837,19 @@ export function enemyAct(state: GameState, u: Unit) {
       }
       break;
     }
+    case "shell": {
+      const col = plan.col ?? -1;
+      spendRound(state, u);
+      if (!chance(state, enemyHitChance(state, u))) {
+        log(state, `The Mortar Mech's shell lands short of column ${col + 1}.`);
+        return;
+      }
+      const hit = living(state, "friendly").find((f) => f.slot === col);
+      if (!hit) log(state, `A shell lands in column ${col + 1}. Nobody is standing there any more.`);
+      else deal(state, hit, RULES.mortarDamage, "Mortar shell", { attackerUid: u.uid });
+      for (const f of living(state, "friendly").filter((x) => Math.abs(x.slot - col) === 1)) deal(state, f, RULES.mortarSplash, "Mortar splash");
+      return;
+    }
     case "reassemble":
       if (!u.repaired) {
         u.repaired = true;
@@ -884,6 +908,10 @@ export function enemyAct(state: GameState, u: Unit) {
   const base = missile ? (u.kind === "lvl2" ? 6 : 3) : Math.max(1, u.atk - (partDown(u, "weapon") ? 1 : 0));
   const done = deal(state, final, crazyDmg(base, u.crazy, state), missile ? `${name} missile` : name, { attackerUid: u.uid, ranged: !missile && !is(u, "melee") });
   if (u.kind === "infested" && final.kind === "jubey" && done > 0) addContamination(state, RULES.contamPerInfestedHit, "The Infested leaves something on the rig.");
+  if (u.kind === "scout" && done > 0 && final.hp > 0) {
+    final.spotted = state.turn;
+    log(state, `SPOTTED: the Scout Mech paints the ${label(final.kind)}. Every other enemy aims better at it this turn.`);
+  }
   if (u.kind === "nightmare" && done > 0) {
     state.madness += 1;
     log(state, "The Nightmare Stalker's frame is wrong to look at. +1 Madness.");

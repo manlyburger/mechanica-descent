@@ -280,7 +280,7 @@ function moveToInventory(state: GameState, r: PilotRec, filter: (d: ItemDef) => 
 
 // ---------- Cockpit Parts ----------
 
-export const PILOTED: UnitKind[] = ["light", "lvl2", "powered", "needleback", "latchback", "widow", "kilnheart", "bishop", "hunter", "tracker", "predator"];
+export const PILOTED: UnitKind[] = ["light", "lvl2", "powered", "needleback", "latchback", "widow", "kilnheart", "bishop", "hunter", "tracker", "predator", "scout", "gunner", "shieldmech", "mortar"];
 
 /** One roll per cockpit source, ever. */
 export function rollParts(state: GameState, key: string, why: string) {
@@ -587,6 +587,9 @@ function runner(state: GameState, r: PilotRec, slot: number) {
     return syncAfterBolt(state, r, true);
   }
   spawn(state, "capsule", "enemy", s, { pilot: r.id, role: r.role ?? "runner", hp: Math.max(1, r.hp), maxHp: Math.max(1, maxHp(r)), exitIn: has(r, "ankle") ? 3 : 2, note: `${r.name}, on foot` });
+  // An R-8 pilot running across the field is no longer "captured": they are loose until caught or gone.
+  const tp = state.team.pilots.find((p) => p.id === r.id);
+  if (tp && tp.status === "captured") tp.status = "active";
 }
 
 function bolt(state: GameState, u: Unit, r: PilotRec) {

@@ -1,4 +1,4 @@
-# Mechanica Descent — build notes (v0.8)
+# Mechanica Descent — build notes (v0.9)
 
 Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs mark TUNE LATER is a field in `RULES`.
 
@@ -28,7 +28,52 @@ Rules, numbers and card text live in `src/game/data.ts`. Every value the briefs 
 | `src/App.tsx` | App shell: save/load, header, which screen is showing |
 | `src/ui/` | One file per screen: `Battle`, `Token` (unit tiles and status), `Route`, `EventPanel`, `Between` (salvage, reward, Decon, Tech Stop, end), `Start`, `Help`, `Crew`, and `shared` (cards, chips, the log) |
 | `src/game/stalkers.ts` | Threat stalkers: creation, level, movement, interception, elimination, orange route snippets |
-| `src/game/tests/` | 391 tests: the briefs' scenarios, invariants under random play, save/reload |
+| `src/game/tests/` | 405 tests: the briefs' scenarios, invariants under random play, save/reload |
+
+## What v0.9 adds
+
+Prompt 12: the Hangar and the Last Safe Room earlier, and more basic enemies so fights scale with depth.
+
+### Nightmare Rooms earlier
+
+- The Hangar That Breathes and the Last Safe Room now open from tier II (room 5, or earlier with high Threat), not III. Their tier-IV extras are unchanged: the Hangar's second chassis, and a hidden mech in a surveillance Safe Room.
+
+### Four new basic enemies: the Light Mech's cousins
+
+All four are piloted, anonymous, and fit the existing systems: escape pods, Cockpit Parts, random enemy equipment, magazines, part damage and cover.
+
+| Enemy | HP | Damage | From room | What it does |
+| --- | --- | --- | --- | --- |
+| Scout Mech | 3 | 1 | 2 | Acts before the rest of the pack. Whatever it hits is SPOTTED: every other enemy aims a step better at it this turn. |
+| Gunner Mech | 5 | 1 | 3 | Two bursts a turn, each with its own aim roll and round, so it reloads every other turn. |
+| Shield Mech | 6, armor 1 | 1 | 5 | Covers the enemies beside it: your direct-fire hits on them lose a point, as the Command Relay does. |
+| Mortar Mech | 4 | 2 | 5 | Marks a column, not a unit: "SHELLING column N". Whatever stands there takes 2, ignoring cover, and the columns beside it take 1. Then a turn loading the next shell. Shift out of the column to dodge. |
+
+- Their pods produce suitable pilots: Scout → Scout; Gunner → Assault; Shield → Heavy or Assault; Mortar → Technician or Heavy.
+- Friendly tiles warn "SHELL INCOMING … Shift out!" and "SPOTTED". The enemy tile shows "SHELLING column N" or "LOADING A SHELL".
+
+### Packs scale with depth
+
+The old pack roll is untouched. A layer on top adds:
+- **Cousins:** each Light in the pack may become one of its cousins: 10% at room 2, +10% a room, capped at 50%. Which cousins are possible depends on the room.
+- **Extra basic mechs:** +1 at room 7, +2 at room 10, +3 from room 13 (`basicExtraFrom`, `basicExtraEvery`, `basicExtraMax`). Weights: Light 4, Scout 3, Gunner 3, Shield 2, Mortar 2 (`basicPool`).
+- **Pack size:** room 1 averages under 2 enemies, unchanged. Room 10 averages more than 0.7 enemies more than room 6, and room 13 more again. Overflow arrives through the existing queue, two a turn.
+- **Route preview** names the cousins that can appear and how many extras to expect.
+
+### Fixed along the way
+
+- Things scheduled by Nightmare Rooms now take their places before the pack, so a full lane can no longer crowd out a Dead Frame.
+- An R-8 captive who bolted on foot was still marked "captured" while running across the field. It now counts as loose until caught or gone.
+
+### Balance
+
+| Bot | First Decon | Clean after 2 legs | Clean after 3 legs |
+| --- | --- | --- | --- |
+| Careful, Lootbox / Mine / Robobuddy | 66% / 71% / 72% (v0.8: 65 / 71 / 74) | — | — |
+| Careful, goes deeper once | 72% | 34% (v0.8: 46%) | — |
+| Greedy, three legs | 67% | — | 16% (v0.8: 26%) |
+
+- The first leg is unchanged. Deeper legs are clearly harder, as asked. The knobs are the extras schedule, the cousin cap (`variantMax`) and the weights.
 
 ## What v0.8 adds
 
@@ -621,3 +666,10 @@ Read as: "noncombat bots" are the friendly machines and structures with no attac
 Read as: build the attached brief as v0.8, on top of v0.7.
 
 - `docs/briefs/07-nightmare-rooms-conductor-zombie-mechs.txt`
+
+**Prompt 12 (2026-11-21)**, answering "Do you want them to appear earlier?" about the Hangar and the Last Safe Room
+
+> Yes.
+> Add more basic enemies like light mech to scale up combats better
+
+Read as: open both rooms from tier II; add basic piloted enemies in the Light Mech's weight class, and make packs grow with depth.

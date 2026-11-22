@@ -57,7 +57,11 @@ export type UnitKind =
   | "nightmare"
   | "deadframe"
   | "mimic"
-  | "casket";
+  | "casket"
+  | "scout"
+  | "gunner"
+  | "shieldmech"
+  | "mortar";
 
 export interface DepthRow {
   alwaysLight: number;
@@ -299,7 +303,7 @@ export const RULES = {
   buddyRebuildHp: 0.5,
   buddyReassemblyRooms: 2, // rooms it sits out after a rebuild before it rejoins
   buddyLossThreat: 1, // only if Robobuddy is still wrecked when you leave the room
-  anonEject: { light: 0.3, lvl2: 0.4 } as Record<string, number>,
+  anonEject: { light: 0.3, lvl2: 0.4, scout: 0.25, gunner: 0.3, shieldmech: 0.3, mortar: 0.3 } as Record<string, number>,
   anonEmptyPod: 0.1,
   podOutcome: { cooperative: 0.3, frightened: 0.35, hostile: 0.25, incapacitated: 0.1 },
   subdue: 0.7,
@@ -326,6 +330,20 @@ export const RULES = {
   stalkerHpPerLevel: 2,
   // Scrap in a wreck, by what it was. Anything not listed holds 1, as before.
   wreckValue: { widow: 2, kilnheart: 2, bishop: 2, hunter: 2, tracker: 2, predator: 2, nightmare: 2 } as Record<string, number>,
+
+  // ---- v0.9: basic enemies and pack scaling ----
+  // A guaranteed or extra Light becomes one of its cousins this often (rising with depth, capped).
+  variantFromRoom: 2,
+  variantPerRoom: 0.1,
+  variantMax: 0.5,
+  // Extra basic enemies on top of the old pack: one more every 3 rooms from room 7, up to 3.
+  basicExtraFrom: 4,
+  basicExtraEvery: 3,
+  basicExtraMax: 3,
+  // [first room, weight] for each basic kind; heavier roles arrive later.
+  basicPool: { light: [1, 4], scout: [2, 3], gunner: [3, 3], shieldmech: [5, 2], mortar: [5, 2] } as Record<string, [number, number]>,
+  mortarDamage: 2,
+  mortarSplash: 1,
 
   // ---- brief 7: Nightmare Rooms ----
   // Threat bands, recalibrated to measured runs (greedy median 5, 90th percentile 13, max seen 29).
@@ -444,6 +462,11 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   tracker: { name: "Recon Stalker", hp: 8, atk: 2, missiles: 0, size: "medium", tags: ["mechanical", "piloted", "anomaly_eligible"] },
   predator: { name: "Recovery Predator", hp: 10, atk: 2, missiles: 0, armor: 1, size: "heavy", tags: ["mechanical", "piloted", "heavy_machine", "repair_capable", "salvage_sensitive"] },
   nightmare: { name: "Nightmare Stalker", hp: 11, atk: 3, missiles: 0, size: "heavy", startProx: 0, tags: ["mechanical", "heavy_machine", "melee"] },
+  // v0.9 basic enemies: the Light Mech's cousins, for bigger and more varied fights deeper down.
+  scout: { name: "Scout Mech", hp: 3, atk: 1, missiles: 0, size: "small", tags: ["mechanical", "aggressive", "piloted", "anomaly_eligible"] },
+  gunner: { name: "Gunner Mech", hp: 5, atk: 1, missiles: 0, size: "medium", tags: ["mechanical", "aggressive", "piloted", "anomaly_eligible"] },
+  shieldmech: { name: "Shield Mech", hp: 6, atk: 1, missiles: 0, armor: 1, size: "medium", tags: ["mechanical", "defensive", "piloted", "anomaly_eligible"] },
+  mortar: { name: "Mortar Mech", hp: 4, atk: 2, missiles: 0, size: "medium", tags: ["mechanical", "piloted", "anomaly_eligible"] },
   deadframe: { name: "The Dead Frame", hp: 8, atk: 2, missiles: 0, size: "heavy", startProx: 0, tags: ["mechanical", "heavy_machine", "melee"] },
   mimic: { name: "The Wrong Robobuddy", hp: 4, atk: 1, missiles: 0, size: "small", tags: ["mechanical"] },
   casket: { name: "CASKET-13", hp: 14, atk: 4, missiles: 0, size: "heavy", tags: ["mechanical", "machine", "heavy_machine", "melee"] },

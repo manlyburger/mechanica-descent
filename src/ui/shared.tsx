@@ -14,7 +14,7 @@ export const SHORT: Record<UnitKind, string> = {
   bulkhead: "Bulkhead", beacon: "Beacon", shepherd: "Shepherd", walker: "Walker", jack: "Panic Jack", warframe: "Warframe",
   clampjaw: "Clampjaw", pod: "Pod", needleback: "Courier", latchback: "Brawler", widow: "Widow", kilnheart: "Breaker",
   bishop: "Bishop", capsule: "Capsule", relay: "Relay", prisoner: "Prisoner", frame: "Frame", pilot: "Pilot",
-  hunter: "Hunter", tracker: "Recon", predator: "Predator", nightmare: "Nightmare", deadframe: "Dead Frame", mimic: "Imitation", casket: "CASKET-13",
+  hunter: "Hunter", tracker: "Recon", predator: "Predator", nightmare: "Nightmare", deadframe: "Dead Frame", mimic: "Imitation", casket: "CASKET-13", scout: "Scout", gunner: "Gunner", shieldmech: "Shield", mortar: "Mortar",
 };
 
 export function Chip({ k, v, hot }: { k: string; v: string; hot?: boolean }) {

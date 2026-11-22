@@ -14,15 +14,18 @@ export const GEAR: Record<EnemyGear["id"], { name: string; text: string; conceal
 };
 
 /** Enemies with a gun that has to be reloaded. */
-const MAGAZINE: UnitKind[] = ["light", "lvl2", "powered", "needleback", "widow", "bishop", "tracker", "predator"];
+const MAGAZINE: UnitKind[] = ["light", "lvl2", "powered", "needleback", "widow", "bishop", "tracker", "predator", "scout", "gunner", "shieldmech", "mortar"];
+/** Magazines that are not the standard 4 rounds. A mortar holds one shell. */
+const MAG_SIZE: Partial<Record<UnitKind, number>> = { mortar: 1 };
 /** Enemies that can roll random equipment. Authored enemies get theirs from their own records. */
-const RANDOM_GEAR: UnitKind[] = ["light", "lvl2", "powered", "zombie"];
+const RANDOM_GEAR: UnitKind[] = ["light", "lvl2", "powered", "zombie", "scout", "gunner", "shieldmech", "mortar"];
 
 export function has(u: Unit, id: EnemyGear["id"]): EnemyGear | undefined {
   return u.gear?.find((g) => g.id === id);
 }
 export function magazine(u: Unit): number {
-  return has(u, "extmag") && !u.partsDown?.includes("weapon") ? Math.ceil(RULES.magazine * 1.5) : RULES.magazine;
+  const base = MAG_SIZE[u.kind] ?? RULES.magazine;
+  return has(u, "extmag") && !u.partsDown?.includes("weapon") ? Math.ceil(base * 1.5) : base;
 }
 export function allowed(kind: UnitKind, id: EnemyGear["id"]): boolean {
   if (id === "missilepod") return true;

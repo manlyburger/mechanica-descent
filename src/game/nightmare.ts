@@ -138,8 +138,8 @@ const ROOM_TIERS: Record<NmRoomId, [number, number]> = {
   staircase: [1, 4],
   reliquary: [2, 4],
   wrongbuddy: [2, 4],
-  hangar: [3, 4],
-  saferoom: [3, 4],
+  hangar: [2, 4], // v0.9: from tier II (room 5), not III
+  saferoom: [2, 4],
 };
 export const ROOM_NAMES: Record<NmRoomId, string> = {
   choir: "THE CAPTIVE CHOIR",

@@ -2,6 +2,7 @@ import { RULES, depthFor, label, type UnitKind } from "../game/data";
 import {
   leg,
   riskyOdds,
+  basicOutlook,
   NM,
   type GameState,
 } from "../game/engine";
@@ -14,6 +15,7 @@ export function Route({ state, dispatch }: { state: GameState; dispatch: Dispatc
   const drones = Math.min(RULES.threatDroneMax, Math.floor(state.threat / RULES.threatPerDrone));
   const toDecon = RULES.deconEvery - ((state.room - 1) % RULES.deconEvery);
   const lights = d.alwaysLight + leg(state.room) * RULES.legExtraLight;
+  const basic = basicOutlook(state.room);
   return (
     <section className="panel">
       <h2>Room {state.room}. Pick a path.</h2>
@@ -48,7 +50,7 @@ export function Route({ state, dispatch }: { state: GameState; dispatch: Dispatc
       <p className="muted">
         {state.revealNext
           ? `${state.intel.questionable ? "UNVERIFIED records say" : "You know what is in there"}: ${(state.intel.questionable ? ["drone" as UnitKind, ...state.nextPack.slice(1)] : state.nextPack).map((k) => label(k)).join(", ") || "nothing"}.`
-          : `Expect ${lights} Light${lights > 1 ? "s" : ""}, extra Light ${pct(d.extraLight)}, Infested ${pct(d.infested)}${state.room >= 3 ? `, Level 2 ${pct(d.lvl2)}` : ""}.`}
+          : `Expect ${lights} Light${lights > 1 ? "s" : ""}, extra Light ${pct(d.extraLight)}, Infested ${pct(d.infested)}${state.room >= 3 ? `, Level 2 ${pct(d.lvl2)}` : ""}.${basic.variant > 0 ? ` Each Light may be a ${basic.kinds.filter((k) => k !== "light").map((k) => label(k).replace(" Mech", "")).join(" / ")} Mech (${pct(basic.variant)}).` : ""}${basic.extras > 0 ? ` +${basic.extras} more basic mech${basic.extras > 1 ? "s" : ""}.` : ""}`}
         {drones > 0 ? ` Threat ${state.threat}: ${drones} Drone${drones > 1 ? "s" : ""} will follow.` : ""}
         {state.pendingSpawn.length ? ` Something from the last hall is waiting too.` : ""} Decon Bay in {toDecon} room
         {toDecon > 1 ? "s" : ""}.

@@ -143,6 +143,8 @@ function note6(s: GameState) {
   if (s.nm.room) brief6.add("nm:" + s.nm.room.id);
   for (const e of s.nm.effects) brief6.add("nmfx:" + e.type + ":" + e.status);
   if (s.units.some((u) => u.kind === "deadframe")) brief6.add("nm:deadframe");
+  for (const u of s.units) if (["scout", "gunner", "shieldmech", "mortar"].includes(u.kind)) brief6.add("v09:" + u.kind);
+  if (s.units.some((u) => u.plan?.type === "shell")) brief6.add("v09:shell");
 }
 
 describe("engine", () => {
@@ -205,7 +207,7 @@ describe("engine", () => {
     for (const id of REWARD_POOL) expect(played.has(id), `card ${id} never played`).toBe(true);
     for (const op of ["equip", "unequip", "assign:foot", "assign:frame", "talk", "treat", "stat", "unlock"]) expect(played.has("pilot:" + op), `pilot op ${op} never used`).toBe(true);
     expect(endings.size, "no run ever ended the pursuit").toBeGreaterThanOrEqual(1);
-    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload", "v07:part", "v07:shift", "v07:bound", "v07:cover", "nm:choir", "nm:staircase", "nm:reliquary", "nm:wrongbuddy", "nmfx:transmission:active", "nm:deadframe"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
+    for (const k of ["stalker:hunting", "stalker:intercepting", "stalker:engaged", "stalker:defeated", "pod:opened", "gear:revealed", "reload", "v07:part", "v07:shift", "v07:bound", "v07:cover", "nm:choir", "nm:staircase", "nm:reliquary", "nm:wrongbuddy", "nmfx:transmission:active", "nm:deadframe", "v09:scout", "v09:gunner", "v09:shieldmech", "v09:mortar", "v09:shell"]) expect(brief6.has(k), `${k} never happened: ${[...brief6].join(", ")}`).toBe(true);
     expect(statuses.has("dead") && (statuses.has("escaped") || statuses.has("withdrawn")), `pilot outcomes seen: ${[...statuses].join(", ")}`).toBe(true);
   });
 

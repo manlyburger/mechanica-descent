@@ -12,7 +12,8 @@ export function planText(state: GameState, u: Unit): string {
   if (p.type === "disabled") return u.foam ? "foamed" : (u.sealed ?? 0) > 0 ? `sealed ${u.sealed}` : "stunned";
   if (p.type === "eject") return p.note ?? "PREPARING TO EJECT";
   if (p.type === "detonate") return "REACTOR FAILURE THIS TURN";
-  if (p.type === "reload") return "RELOADING";
+  if (p.type === "reload") return p.note ?? "RELOADING";
+  if (p.type === "shell") return `SHELLING column ${(p.col ?? 0) + 1}`;
   return p.note ?? p.type;
 }
 
@@ -44,6 +45,8 @@ export function statusLines(state: GameState, u: Unit): string[] {
   }
   if (u.leech) s.push(`${u.leech.temp ? "offspring " : ""}leech ${u.leech.count}/${RULES.leechMax}`);
   if (u.armor > 0) s.push(`armor ${u.armor}: −${u.armor} per hit`);
+  if (u.side === "friendly" && state.units.some((e) => e.side === "enemy" && e.hp > 0 && e.plan?.type === "shell" && e.plan.col === u.slot)) s.push(`SHELL INCOMING: ${RULES.mortarDamage} dmg, ignores cover. Shift out!`);
+  if (u.side === "friendly" && u.spotted === state.turn) s.push("SPOTTED: enemies aim better at it");
   const cover = PT.coverFrom(state, u);
   if (cover) s.push(`in cover (${SHORT[cover.kind]}): −1 per shot`);
   if (u.weak) s.push("exposed: takes +1");

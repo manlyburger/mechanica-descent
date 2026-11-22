@@ -52,7 +52,7 @@ export function partLine(u: Unit): string {
 // ---------- cover ----------
 
 const COVER_FRIENDLY = ["bulkhead", "pod"];
-const COVER_ENEMY = ["relay"];
+const COVER_ENEMY = ["relay", "shieldmech"];
 
 /** The unit giving this one cover, if any: a cover piece in the next column on the same side. */
 export function coverFrom(state: GameState, u: Unit): Unit | undefined {

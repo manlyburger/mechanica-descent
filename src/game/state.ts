@@ -17,12 +17,14 @@ export interface Leech {
 export interface Plan {
   type:
     | "attack" | "missile" | "purge" | "tear" | "removeLeech" | "scavenge" | "jam" | "shake" | "break" | "hold" | "disabled"
-    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate" | "reload" | "reassemble";
+    | "approach" | "rush" | "eject" | "recover" | "command" | "mark" | "struggle" | "flee" | "detonate" | "reload" | "reassemble" | "shell";
   targetUid?: string;
   dmg?: number;
   note?: string;
   /** A Laser Sight is painting the target. Shown even before the sight is identified. */
   laser?: boolean;
+  /** Mortar: the column the shell will land in. */
+  col?: number;
 }
 
 export interface Unit {
@@ -130,6 +132,7 @@ export interface Unit {
   strikes?: number; // CASKET-13: blows landed, for its every-third splash
   rampage?: boolean; // CASKET-13: lashes out once at the next fight start
   ambushed?: boolean;
+  spotted?: number; // v0.9: a Scout Mech has spotted this unit until the end of this turn's enemy phase
   // enemy equipment and magazine
   gear?: EnemyGear[];
   gearRolled?: boolean;
